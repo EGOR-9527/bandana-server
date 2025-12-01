@@ -30,84 +30,21 @@ app.use(
 );
 app.use(express.json());
 const uploadsPath = path.resolve(__dirname, "uploads");
-console.log("Обслуживаю статику из:", uploadsPath); // ← посмотри в консоль!
+console.log("Обслуживаю статику из:", uploadsPath);
 app.use("/uploads", express.static(uploadsPath));
 app.use("/api", photosRouter);
 
-// Проверяем, установлен ли PostgreSQL
-async function isPostgresInstalled() {
-  try {
-    await execPromise("pg_isready --version", { stdio: "ignore" });
-    return true;
-  } catch {
-    try {
-      await execPromise("postgres --version", { stdio: "ignore" });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-}
-
-// Автоматическая установка PostgreSQL на Linux, если его нет
-async function ensurePostgresOnLinux() {
-  const platform = os.platform();
-
-  if (platform !== "linux") {
-    console.log(`ОС: ${platform} — автоустановка PostgreSQL не поддерживается`);
-    return;
-  }
-
-  console.log("Проверка наличия PostgreSQL...");
-
-  const installed = await isPostgresInstalled();
-
-  if (installed) {
-    console.log("PostgreSQL уже установлен");
-    return;
-  }
-
-  console.log("PostgreSQL не найден → запускаем установку...");
-
-  try {
-    const { stdout, stderr } = await execPromise(
-      "bash ./scripts/setup_postgres_linux.sh",
-      {
-        timeout: 600000, // 10 минут
-      }
-    );
-
-    console.log("PostgreSQL успешно установлен!");
-    console.log(stdout);
-    if (stderr) console.warn("Предупреждения:", stderr);
-
-    console.log("Ждём 10 секунд, чтобы служба PostgreSQL запустилась...");
-    await new Promise((resolve) => setTimeout(resolve, 10000));
-  } catch (err) {
-    console.error("ОШИБКА: Не удалось установить PostgreSQL автоматически");
-    console.error(err.message);
-    console.error(
-      "Установи вручную: sudo apt update && sudo apt install postgresql"
-    );
-    process.exit(1);
-  }
-}
-
 const start = async () => {
   try {
-    // Установка PostgreSQL (только Linux + если нет)
-    await ensurePostgresOnLinux();
 
-    // Подключение к БД
     console.log("Подключение к PostgreSQL...");
     await sequelize.authenticate();
     console.log("Подключение к БД успешно!");
 
-    // Синхронизация моделей
     await sequelize.sync({ alter: process.env.NODE_ENV !== "production" });
     console.log("Таблицы синхронизированы");
 
-    // bot.launch(); // раскомментируй, когда будешь готов
+    bot.launch();
 
     const PORT = process.env.PORT || 3001;
     app.listen(PORT, () => {
