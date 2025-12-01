@@ -2,8 +2,8 @@
 
 # Имя базы данных, пользователя и пароль
 DB_NAME="bandana"
-DB_USER="postgres"
-DB_PASS="Docenko1000"
+DB_USER="bandana_user"
+DB_PASS="timonandpoombo"
 
 # Проверяем, установлен ли psql
 if ! command -v psql > /dev/null; then
