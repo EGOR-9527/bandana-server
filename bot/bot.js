@@ -2,7 +2,6 @@ const { Telegraf, Scenes, session } = require("telegraf");
 require("dotenv").config();
 
 const { showMenu, handleEventCallback } = require("./helpers/menu");
-
 const startCommand = require("./commands/start");
 const eventsCommand = require("./commands/events");
 const galleryCommand = require("./commands/gallery");
@@ -27,7 +26,6 @@ const GLOBAL_COMMANDS = ["events", "gallery", "video"];
 
 bot.use(async (ctx, next) => {
   const text = ctx.message?.text || ctx.callbackQuery?.data;
-
   if (!text) return next();
 
   if (ctx.callbackQuery) {
