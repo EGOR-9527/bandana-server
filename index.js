@@ -3,7 +3,6 @@ const cors = require("cors");
 const path = require("path");
 const sequelize = require("./config/db");
 const photosRouter = require("./routes/router");
-const bot = require("./bot/bot");
 require("dotenv").config();
 
 const app = express();
@@ -28,7 +27,6 @@ const start = async () => {
     await sequelize.sync({ alter: process.env.NODE_ENV !== "production" });
     console.log("Таблицы синхронизированы");
 
-    await bot.launch();
     console.log("Бот запущен");
 
     const PORT = process.env.PORT || 3001;
