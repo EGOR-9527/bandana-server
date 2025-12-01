@@ -36,7 +36,7 @@ const start = async () => {
     await sequelize.sync({ alter: process.env.NODE_ENV !== "production" });
     console.log("Таблицы синхронизированы");
 
-    bot.start()
+    bot.start();
 
     console.log("Бот запущен");
 
