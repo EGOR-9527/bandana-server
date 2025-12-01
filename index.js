@@ -3,6 +3,7 @@ const cors = require("cors");
 const path = require("path");
 const sequelize = require("./config/db");
 const photosRouter = require("./routes/router.js");
+const bot = require("./bot/bot");
 require("dotenv").config();
 
 const app = express();
@@ -31,13 +32,14 @@ app.use("/api", photosRouter);
 
 const start = async () => {
   try {
-
     console.log("Подключение к PostgreSQL...");
     await sequelize.authenticate();
     console.log("Подключение к БД успешно!");
 
     await sequelize.sync({ alter: process.env.NODE_ENV !== "production" });
     console.log("Таблицы синхронизированы");
+
+    bot.launch().then(() => console.log("Бот запущен"));
 
     const PORT = process.env.PORT || 3001;
     app.listen(PORT, () => {

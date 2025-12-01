@@ -22,6 +22,7 @@ const addVideoScene = require("./scenes/video/addVideoScene");
 const updateVideoScene = require("./scenes/video/updateVideoScene");
 const deleteVideoScene = require("./scenes/video/deleteVideoScene");
 
+console.log(process.env.BOT_TOKEN)
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // session — обязателен для сцен
