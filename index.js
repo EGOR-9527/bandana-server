@@ -9,17 +9,19 @@ require("dotenv").config();
 const app = express();
 
 const allowedOrigins = ["https://bandana-dance.ru"];
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (!allowedOrigins.includes(origin)) {
-      const msg = `CORS ошибка: ${origin} не разрешён`;
-      return callback(new Error(msg), false);
-    }
-    return callback(null, true);
-  },
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (!allowedOrigins.includes(origin)) {
+        const msg = `CORS ошибка: ${origin} не разрешён`;
+        return callback(new Error(msg), false);
+      }
+      return callback(null, true);
+    },
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 
@@ -37,6 +39,9 @@ const start = async () => {
 
     await sequelize.sync({ alter: process.env.NODE_ENV !== "production" });
     console.log("Таблицы синхронизированы");
+
+    console.log(bot);
+    console.log(typeof bot.launch);
 
     await bot.launch();
     console.log("Бот запущен");
