@@ -12,7 +12,22 @@ require("dotenv").config();
 const app = express();
 const execPromise = util.promisify(exec);
 
-app.use(cors());
+const allowedOrigins = ["https://bandana-dance.ru"];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.indexOf(origin) === -1) {
+        const msg = `CORS ошибка: ${origin} не разрешён`;
+        return callback(new Error(msg), false);
+      }
+      return callback(null, true);
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 const uploadsPath = path.resolve(__dirname, "uploads");
 console.log("Обслуживаю статику из:", uploadsPath); // ← посмотри в консоль!
