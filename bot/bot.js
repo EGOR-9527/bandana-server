@@ -24,23 +24,40 @@ bot.use(session());
 
 const GLOBAL_COMMANDS = ["events", "gallery", "video"];
 
+const ADMINS_ID = process.env.ADMINS_ID.split(",").map((id) => Number(id));
+
 bot.use(async (ctx, next) => {
   const text = ctx.message?.text || ctx.callbackQuery?.data;
   if (!text) return next();
 
+  const userId = ctx.from?.id;
+  console.log();
+  if (!ADMINS_ID.includes(userId)) {
+    return ctx.reply("Ты не админ🤡");
+  }
+
   if (ctx.callbackQuery) {
-    try { await ctx.answerCbQuery(); } catch {}
+    try {
+      await ctx.answerCbQuery();
+    } catch (err) {
+      console.log("Ошибка: " + err);
+    }
   }
 
   if (GLOBAL_COMMANDS.includes(text)) {
     if (ctx.scene?.current?.id) {
-      try { await ctx.scene.leave(); } catch {}
+      try {
+        await ctx.scene.leave();
+      } catch {}
     }
 
     switch (text) {
-      case "events": return showMenu(ctx, 0);
-      case "gallery": return showMenu(ctx, 1);
-      case "video": return showMenu(ctx, 2);
+      case "events":
+        return showMenu(ctx, 0);
+      case "gallery":
+        return showMenu(ctx, 1);
+      case "video":
+        return showMenu(ctx, 2);
     }
   }
 

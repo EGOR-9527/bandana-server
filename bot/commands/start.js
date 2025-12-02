@@ -10,7 +10,6 @@ module.exports = (bot) => {
     );
   });
 
-  // можно ещё команду /menu
   bot.command("menu", (ctx) => {
     return ctx.reply(
       "Меню",
