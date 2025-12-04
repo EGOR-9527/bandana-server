@@ -2,7 +2,14 @@
 const { Markup } = require("telegraf");
 const fs = require("fs");
 const path = require("path");
-const fetch = require("node-fetch"); // если ещё не установлен, npm i node-fetch@2
+const fetch = require("node-fetch");
+const axios = require("axios");
+
+// -------------------------------
+// Папка для загрузок
+// -------------------------------
+const UPLOADS_DIR = path.join(__dirname, "../../uploads");
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // =======================
 //   Сохраняем фото
@@ -10,11 +17,8 @@ const fetch = require("node-fetch"); // если ещё не установле�
 async function savePhoto(ctx, fileId) {
   const fileLink = await ctx.telegram.getFileLink(fileId);
 
-  const uploadsDir = path.join(__dirname, "../../uploads"); // путь к uploads
-  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
   const fileName = `${Date.now()}.jpg`;
-  const filePath = path.join(uploadsDir, fileName);
+  const filePath = path.join(UPLOADS_DIR, fileName);
 
   const res = await fetch(fileLink.href); // node >= 18
   const buffer = Buffer.from(await res.arrayBuffer());
@@ -27,24 +31,27 @@ async function savePhoto(ctx, fileId) {
 }
 
 // =======================
-//   Сохраняем видео
+//   Сохраняем видео по ссылке (например, Яндекс.Диск)
 // =======================
-async function saveVideo(ctx, videoFileId) {
+async function saveVideoFromUrl(url) {
   try {
-    const fileLink = await ctx.telegram.getFileLink(videoFileId);
-    const response = await fetch(fileLink.href);
-    const buffer = await response.arrayBuffer();
-
     const fileName = `${Date.now()}.mp4`;
-    const dir = path.resolve("uploads");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const filePath = path.join(UPLOADS_DIR, fileName);
+    const writer = fs.createWriteStream(filePath);
 
-    const filePath = path.join(dir, fileName);
-    fs.writeFileSync(filePath, Buffer.from(buffer));
+    const response = await axios({
+      url,
+      method: "GET",
+      responseType: "stream",
+    });
+    response.data.pipe(writer);
 
-    return { fileName, fileUrl: `../../uploads/${fileName}` };
+    return new Promise((resolve, reject) => {
+      writer.on("finish", () => resolve({ fileName, filePath }));
+      writer.on("error", (err) => reject(err));
+    });
   } catch (err) {
-    console.error("saveVideo error:", err);
+    console.error("Ошибка при скачивании видео:", err);
     return null;
   }
 }
@@ -61,7 +68,7 @@ async function deleteOne(ctx, id) {
     if (!ctx.wizard?.state?.sentMessages?.length) return;
     const mid = ctx.wizard.state.sentMessages.shift();
     if (mid) await ctx.deleteMessage(mid);
-  } catch (err) {}
+  } catch {}
 }
 
 // =======================
@@ -76,7 +83,7 @@ async function clearMessages(ctx) {
         } catch {}
       }
     }
-  } catch (err) {}
+  } catch {}
   ctx.wizard.state.sentMessages = [];
   ctx.wizard.state.data = {};
 }
@@ -129,6 +136,22 @@ async function showPreview(ctx, stepName, stepIndex = 0) {
   return msg;
 }
 
+// -------------------------------
+// Получение прямого URL Яндекс.Диска
+// -------------------------------
+async function getYandexDirectLink(publicKey) {
+  try {
+    const apiUrl = `https://cloud-api.yandex.net/v1/disk/public/resources/download?public_key=${encodeURIComponent(
+      publicKey
+    )}`;
+    const res = await axios.get(apiUrl);
+    return res.data.href; // прямой URL для скачивания
+  } catch (err) {
+    console.error("Ошибка получения прямой ссылки Яндекс.Диска:", err);
+    return null;
+  }
+}
+
 // =======================
 //   Валидация ввода
 // =======================
@@ -150,10 +173,7 @@ async function validate(ctx, errorMessage, type) {
   if (ctx.message?.text === "/stop") return "STOP";
 
   // Проверка типа "photo"
-  if (
-    type === "photo" &&
-    (!ctx.message?.photo || ctx.message.photo.length === 0)
-  ) {
+  if (type === "photo" && (!ctx.message?.photo || ctx.message.photo.length === 0)) {
     const msg = await ctx.reply(errorMessage);
     ctx.wizard.state.sentMessages.push(msg.message_id);
     return false;
@@ -183,8 +203,9 @@ async function validate(ctx, errorMessage, type) {
 
 module.exports = {
   savePhoto,
-  saveVideo,
+  saveVideoFromUrl,
   deleteOne,
+  getYandexDirectLink,
   clearMessages,
   showPreview,
   validate,

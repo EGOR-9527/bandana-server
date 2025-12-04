@@ -12,6 +12,7 @@ const deleteVideoScene = new Scenes.WizardScene(
     const videos = await Video.findAll();
     ctx.wizard.state.sentMessages = [];
     ctx.wizard.state.data = {};
+    ctx.wizard.state.processing = false; // флаг блокировки действий
 
     if (!videos || videos.length === 0) {
       await ctx.reply("❌ Нет видео для удаления.");
@@ -28,6 +29,11 @@ const deleteVideoScene = new Scenes.WizardScene(
   // Шаг 1: обработка callback кнопок
   async (ctx) => {
     if (!ctx.callbackQuery) return;
+
+    // Блокировка повторных нажатий
+    if (ctx.wizard.state.processing) return;
+    ctx.wizard.state.processing = true;
+
     const action = ctx.callbackQuery.data;
     const idx = ctx.wizard.state.currentIndex;
     const videos = ctx.wizard.state.videos;
@@ -36,50 +42,53 @@ const deleteVideoScene = new Scenes.WizardScene(
 
     const projectRoot = path.resolve(__dirname, "../../.."); // корень проекта
 
-    if (action === "delete") {
-      const video = videos[idx];
-      const filePath = path.join(projectRoot, "uploads", video.fileName);
+    try {
+      if (action === "delete") {
+        const video = videos[idx];
+        const filePath = path.join(projectRoot, "uploads", video.fileName);
 
-      // Удаляем файл с диска
-      if (fs.existsSync(filePath)) {
-        try {
-          fs.unlinkSync(filePath);
-        } catch (err) {
-          console.error("Ошибка удаления файла:", err);
+        // Удаляем файл с диска
+        if (fs.existsSync(filePath)) {
+          try {
+            fs.unlinkSync(filePath);
+          } catch (err) {
+            console.error("Ошибка удаления файла:", err);
+          }
         }
-      }
 
-      // Удаляем запись из базы
-      await video.destroy();
-      await ctx.reply("🗑 Видео удалено!");
+        // Удаляем запись из базы
+        await video.destroy();
+        await ctx.reply("🗑 Видео удалено!");
 
-      // Убираем видео из массива
-      videos.splice(idx, 1);
+        // Убираем видео из массива
+        videos.splice(idx, 1);
 
-      if (videos.length === 0) {
-        await ctx.reply("Больше видео нет.");
+        if (videos.length === 0) {
+          await ctx.reply("Больше видео нет.");
+          ctx.wizard.state.processing = false;
+          return ctx.scene.leave();
+        }
+
+        // Корректируем индекс
+        ctx.wizard.state.currentIndex = idx >= videos.length ? videos.length - 1 : idx;
+        await showVideoSlide(ctx);
+      } else if (action === "next") {
+        ctx.wizard.state.currentIndex = (idx + 1) % videos.length;
+        await showVideoSlide(ctx);
+      } else if (action === "prev") {
+        ctx.wizard.state.currentIndex = (idx - 1 + videos.length) % videos.length;
+        await showVideoSlide(ctx);
+      } else if (action === "stop") {
+        await clearCurrentMessage(ctx);
+        ctx.wizard.state.processing = false;
         return ctx.scene.leave();
       }
-
-      // Корректируем индекс
-      ctx.wizard.state.currentIndex = idx >= videos.length ? videos.length - 1 : idx;
-      return showVideoSlide(ctx);
+    } catch (err) {
+      console.error("Ошибка обработки кнопки:", err);
     }
 
-    if (action === "next") {
-      ctx.wizard.state.currentIndex = (idx + 1) % videos.length;
-      return showVideoSlide(ctx);
-    }
-
-    if (action === "prev") {
-      ctx.wizard.state.currentIndex = (idx - 1 + videos.length) % videos.length;
-      return showVideoSlide(ctx);
-    }
-
-    if (action === "stop") {
-      await clearCurrentMessage(ctx);
-      return ctx.scene.leave();
-    }
+    // Снимаем блокировку после выполнения действия
+    ctx.wizard.state.processing = false;
   }
 );
 

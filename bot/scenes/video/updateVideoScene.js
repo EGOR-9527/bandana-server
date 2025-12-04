@@ -1,7 +1,14 @@
 // bot/scenes/updateVideoScene.js
 const { Scenes, Markup } = require("telegraf");
 const Video = require("../../../models/video");
-const { saveVideo, validate, deleteOne } = require("../../helpers/telegram");
+const {
+  saveVideo,
+  validate,
+  deleteOne,
+  getYandexDirectLink,
+  saveVideoFromUrl,
+} = require("../../helpers/telegram");
+
 const fs = require("fs");
 const path = require("path");
 
@@ -90,58 +97,90 @@ const updateVideoScene = new Scenes.WizardScene(
   async (ctx) => {
     const field = ctx.wizard.state.fieldToEdit;
     const videoId = ctx.session.editVideoId;
+
     if (!field || !videoId) return ctx.scene.leave();
 
+    // Блокировка повторного нажатия
+    if (ctx.wizard.state.processing) return; // игнорируем повторные клики
+    ctx.wizard.state.processing = true;
+
     const video = await Video.findByPk(videoId);
-    if (!video) return ctx.scene.leave();
+    if (!video) {
+      ctx.wizard.state.processing = false;
+      return ctx.scene.leave();
+    }
 
     let newData = {};
 
-    if (field === "video") {
-      const valid = await validate(ctx, "❌ Отправь видео!", "video");
-      if (!valid) return;
-
-      const videoFileId = ctx.message.video.file_id;
-
-      // Сохраняем новое видео на сервер
-      const fileData = await saveVideo(ctx, videoFileId);
-      if (!fileData) {
-        const msg = await ctx.reply("❌ Не удалось сохранить видео. Попробуй ещё раз.");
-        ctx.wizard.state.sentMessages.push(msg.message_id);
-        return;
-      }
-
-      // Удаляем старый файл
-      if (video.fileName) {
-        const oldPath = path.join(__dirname, "../../../uploads", video.fileName);
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-      }
-
-      newData = {
-        fileName: fileData.fileName,
-        fileUrl: fileData.fileUrl,
-        videoFileId,
-      };
-
-      await ctx.reply("✅ Видео обновлено");
-    } else if (field === "name") {
-      const valid = await validate(ctx, "❌ Напиши новое название!", "text");
-      if (!valid) return;
-
-      newData = { name: ctx.message.text.trim() };
-      await ctx.reply("✅ Название обновлено");
-    }
-
     try {
+      if (field === "video") {
+        const publicUrl = ctx.message?.text?.trim();
+
+        if (!publicUrl || !publicUrl.startsWith("https")) {
+          const msg = await ctx.reply(
+            "❌ Отправь корректную ссылку на новое видео с Яндекс.Диска"
+          );
+          ctx.wizard.state.sentMessages.push(msg.message_id);
+          ctx.wizard.state.processing = false;
+          return;
+        }
+
+        const directUrl = await getYandexDirectLink(publicUrl);
+        if (!directUrl) {
+          const msg = await ctx.reply(
+            "❌ Не удалось получить прямую ссылку. Проверь ссылку"
+          );
+          ctx.wizard.state.sentMessages.push(msg.message_id);
+          ctx.wizard.state.processing = false;
+          return;
+        }
+
+        // Скачиваем видео на сервер
+        const saved = await saveVideoFromUrl(directUrl);
+        if (!saved) {
+          const msg = await ctx.reply(
+            "❌ Не удалось скачать видео. Попробуй ещё раз"
+          );
+          ctx.wizard.state.sentMessages.push(msg.message_id);
+          ctx.wizard.state.processing = false;
+          return;
+        }
+
+        // Удаляем старый файл
+        if (video.fileName) {
+          const oldPath = path.join(
+            __dirname,
+            "../../../uploads",
+            video.fileName
+          );
+          if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+        }
+
+        newData = { fileName: saved.fileName, fileUrl: saved.filePath };
+        await ctx.reply("✅ Видео обновлено");
+      } else if (field === "name") {
+        const text = ctx.message?.text?.trim();
+        if (!text) {
+          const msg = await ctx.reply("❌ Название не может быть пустым");
+          ctx.wizard.state.sentMessages.push(msg.message_id);
+          ctx.wizard.state.processing = false;
+          return;
+        }
+
+        newData = { name: text };
+        await ctx.reply("✅ Название обновлено");
+      }
+
       await Video.update(newData, { where: { id: videoId } });
-    } catch (e) {
-      console.error("Update video error:", e);
+    } catch (err) {
+      console.error("Ошибка при обновлении видео:", err);
       await ctx.reply("❌ Ошибка при обновлении. Попробуй снова.");
     }
 
-    // Возвращаемся к просмотру слайдов
+    ctx.wizard.state.processing = false; // снимаем блокировку
+
     await showVideoSlide(ctx);
-    return ctx.wizard.selectStep(1); // остаемся на шаге выбора видео
+    return ctx.wizard.selectStep(1);
   }
 );
 
@@ -162,12 +201,14 @@ async function showVideoSlide(ctx) {
 
   let msg;
   const filePath = path.join(__dirname, "../../../uploads", video.fileName);
-  console.log(filePath)
+  console.log(filePath);
   if (fs.existsSync(filePath)) {
     msg = await ctx.replyWithVideo(
       { source: filePath },
       {
-        caption: `🎬 ${video.name}\n\n${idx + 1}/${ctx.wizard.state.videos.length}`,
+        caption: `🎬 ${video.name}\n\n${idx + 1}/${
+          ctx.wizard.state.videos.length
+        }`,
         ...keyboard,
       }
     );
