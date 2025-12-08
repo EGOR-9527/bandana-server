@@ -136,7 +136,7 @@ async function clearCurrentMessage(ctx) {
       await ctx.deleteMessage(id);
     } catch {}
   }
-  ctx.wizard.state.sentMessages = [];
-}
+  ctx.wizard.state.sentMessa
+}ges = [];
 
 module.exports = deleteVideoScene;
