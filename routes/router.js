@@ -6,6 +6,7 @@ router.get("/events", UserController.getEvents);
 router.get("/gallery", UserController.getGallery);
 router.get("/video", UserController.getVideo);
 router.get("/gallery-filters", UserController.getGalleryFilters);
+router.get("/teams", UserController.getTeams);
 
 router.post("/contact", UserController.postContactForm);
 

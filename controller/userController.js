@@ -3,8 +3,9 @@ const bot = require("../bot/bot");
 const Events = require("../models/events");
 const Gallery = require("../models/gallery");
 const Video = require("../models/video");
+const Teams = require("../models/teams")
 
-const BASE_URL = process.env.BASE_URL || "http://localhost:5000";
+const BASE_URL = "http://localhost:5000";
 
 const getCleanFilename = (fileUrl) => {
   if (!fileUrl) return "";
@@ -28,7 +29,7 @@ const buildFileUrl = (fileUrl) => {
 class UserController {
   async getEvents(req, res) {
     try {
-      const events = await Events.findAll({ order: [["date", "DESC"]] });
+      const events = await Events.findAll();
       const result = events.map((e) => ({
         ...e.toJSON(),
         fileUrl: buildFileUrl(e.fileUrl),
@@ -40,12 +41,30 @@ class UserController {
     }
   }
 
+  async getTeams(req, res) {
+    try {
+      const teams = await Teams.findAll();
+      console.log(teams)
+      const result = teams.map((t) => ({
+        id: t.id,
+        name: t.name,
+        city: t.city,
+        ageRange: t.ageRange,
+        instructors: t.instructors,
+        achievements: t.achievements,
+        description: t.description,
+        fileUrl: buildFileUrl(t.fileUrl),
+      }));
+      res.json({ success: true, data: result });
+    } catch (err) {
+      console.error("Ошибка getTeams:", err);
+      res.status(500).json({ success: false, message: "Ошибка сервера" });
+    }
+  }
+
   async getGalleryFilters(req, res) {
     try {
-      const images = await Gallery.findAll({
-        attributes: ["filter"],
-        raw: true,
-      });
+      const images = await Gallery.findAll();
 
       const uniqueFilters = [
         ...new Set(
@@ -67,7 +86,7 @@ class UserController {
 
   async getGallery(req, res) {
     try {
-      const images = await Gallery.findAll({ order: [["createdAt", "DESC"]] });
+      const images = await Gallery.findAll();
       const result = images.map((img) => ({
         ...img.toJSON(),
         fileUrl: buildFileUrl(img.fileUrl),
@@ -81,7 +100,7 @@ class UserController {
 
   async getVideo(req, res) {
     try {
-      const videos = await Video.findAll({ order: [["createdAt", "DESC"]] });
+      const videos = await Video.findAll();
       const result = videos.map((v) => ({
         ...v.toJSON(),
         fileUrl: buildFileUrl(v.fileUrl),

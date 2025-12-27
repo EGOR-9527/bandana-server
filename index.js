@@ -17,7 +17,7 @@ CORS
 
 const ALLOWED_ORIGINS = [
   "https://bandana-dance.ru",
-  "https://www.bandana-dance.ru"
+  "https://www.bandana-dance.ru",
 ];
 
 app.use(

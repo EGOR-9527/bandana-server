@@ -109,6 +109,7 @@ async function showTeamSlide(ctx) {
           `🏙 Город: ${team.city}\n` +
           `🎂 Возраст: ${team.ageRange}\n` +
           `👨‍🏫 Преподаватели: ${team.instructors}\n` +
+          `📝 Описание: ${team.description}\n` +
           `🏆 Достижения:\n${team.achievements?.map(a => `• ${a}`).join("\n") || "—"}\n\n` +
           `${idx + 1}/${ctx.wizard.state.teams.length}`,
         ...keyboard,
@@ -120,6 +121,7 @@ async function showTeamSlide(ctx) {
       `🏙 Город: ${team.city}\n` +
       `🎂 Возраст: ${team.ageRange}\n` +
       `👨‍🏫 Преподаватели: ${team.instructors}\n` +
+      `📝 Описание: ${team.description}\n` +
       `🏆 Достижения:\n${team.achievements?.map(a => `• ${a}`).join("\n") || "—"}\n\n` +
       `${idx + 1}/${ctx.wizard.state.teams.length}`,
       keyboard

@@ -7,6 +7,12 @@ const path = require("path");
 
 const uploadDir = path.join(__dirname, "../../../uploads");
 
+// Функция для экранирования Markdown символов
+function escapeMarkdown(text) {
+  if (!text) return text;
+  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+}
+
 const updateTeamScene = new Scenes.WizardScene(
   "update_team",
 
@@ -60,6 +66,7 @@ const updateTeamScene = new Scenes.WizardScene(
         [Markup.button.callback("Возраст", "field_ageRange")],
         [Markup.button.callback("Преподаватели", "field_instructors")],
         [Markup.button.callback("Достижения", "field_achievements")],
+        [Markup.button.callback("Описание", "field_description")], // Добавлена кнопка описания
         [Markup.button.callback("Назад к просмотру", "back_to_slider")],
       ]);
 
@@ -86,8 +93,17 @@ const updateTeamScene = new Scenes.WizardScene(
         ageRange: "возраст участников",
         instructors: "преподаватели",
         achievements: "достижения",
+        description: "описание", // Добавлено описание
       };
       const fieldName = fieldNames[field] || field;
+
+      // Разрешаем редактировать только фото и описание
+      if (field !== "photo" && field !== "description") {
+        await ctx.reply("❌ Редактирование этого поля временно недоступно. Вы можете редактировать только фото и описание.");
+        ctx.wizard.state.fieldToEdit = null;
+        delete ctx.session.editTeamId;
+        return;
+      }
 
       const text = field === "photo"
         ? "Пришли новое фото команды"
@@ -128,28 +144,29 @@ const updateTeamScene = new Scenes.WizardScene(
           if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
         }
 
-        newData = { fileName: fileData.fileName, photoFileId: photo.file_id };
-        successMessage = "Фото успешно обновлено!";
-      } else if (field === "achievements") {
-        if (!ctx.message?.text?.trim()) {
-          await ctx.reply("Пожалуйста, пришли текст");
-          return;
-        }
-        newData = { achievements: ctx.message.text.trim().split(";").map(a => a.trim()) };
-        successMessage = "Достижения обновлены!";
-      } else {
-        if (!ctx.message?.text?.trim()) {
-          await ctx.reply("Пожалуйста, пришли текст");
-          return;
-        }
-        newData = { [field]: ctx.message.text.trim() };
-        const names = {
-          name: "Название",
-          city: "Город",
-          ageRange: "Возраст участников",
-          instructors: "Преподаватели",
+        // Формируем fileUrl на основе имени файла
+        const fileUrl = `/uploads/${fileData.fileName}`;
+        
+        newData = { 
+          fileName: fileData.fileName, 
+          photoFileId: photo.file_id,
+          fileUrl: fileUrl // Обновляем fileUrl
         };
-        successMessage = `${names[field] || field} обновлено!`;
+        successMessage = "Фото успешно обновлено!";
+      } else if (field === "description") {
+        if (!ctx.message?.text?.trim()) {
+          await ctx.reply("Пожалуйста, пришли текст");
+          return;
+        }
+        newData = { description: ctx.message.text.trim() };
+        successMessage = "Описание обновлено!";
+      } else {
+        // Для других полей показываем сообщение о недоступности
+        await ctx.reply("❌ Редактирование этого поля временно недоступно. Вы можете редактировать только фото и описание.");
+        ctx.wizard.state.fieldToEdit = null;
+        delete ctx.session.editTeamId;
+        await showTeamSlide(ctx);
+        return ctx.wizard.selectStep(1);
       }
 
       await Teams.update(newData, { where: { id: teamId } });
@@ -181,18 +198,25 @@ async function showTeamSlide(ctx) {
   const team = ctx.wizard.state.teams[idx];
   const total = ctx.wizard.state.teams.length;
 
-  const achievements = team.achievements?.map(a => `• ${a}`).join("\n") || "—";
+  // Экранируем все текстовые поля для безопасного использования в Markdown
+  const name = escapeMarkdown(team.name) || "_не указано_";
+  const city = escapeMarkdown(team.city) || "_не указано_";
+  const ageRange = escapeMarkdown(team.ageRange) || "_не указано_";
+  const instructors = escapeMarkdown(team.instructors) || "_не указано_";
+  const achievements = team.achievements?.length 
+    ? escapeMarkdown(team.achievements.join(", ")) 
+    : "_не указано_";
+  const description = escapeMarkdown(team.description) || "_не указано_";
 
-  const caption = `
-*Команда ${idx + 1} из ${total}*
+  const caption = `*Команда ${idx + 1} из ${total}*
 
-🏷 Название: ${team.name || "_не указано_"}
-🏙 Город: ${team.city || "_не указано_"}
-🎂 Возраст: ${team.ageRange || "_не указано_"}
-👨‍🏫 Преподаватели: ${team.instructors || "_не указано_"}
-🏆 Достижения:
-${achievements}
-`.trim();
+🏷 Название: ${name}
+🏙 Город: ${city}
+🎂 Возраст: ${ageRange}
+👨‍🏫 Преподаватели: ${instructors}
+🏆 Достижения: ${achievements}
+📝 Описание:
+${description}`;
 
   const keyboard = Markup.inlineKeyboard([
     [
@@ -205,23 +229,52 @@ ${achievements}
   await clearCurrentMessage(ctx);
 
   let msg;
-  if (team.photoFileId) {
-    msg = await ctx.replyWithPhoto(team.photoFileId, {
-      caption,
-      parse_mode: "Markdown",
-      ...keyboard,
-    });
-  } else if (team.fileName && fs.existsSync(path.join(uploadDir, team.fileName))) {
-    msg = await ctx.replyWithPhoto({ source: path.join(uploadDir, team.fileName) }, {
-      caption,
-      parse_mode: "Markdown",
-      ...keyboard,
-    });
-  } else {
-    msg = await ctx.reply(caption + "\n\nФото недоступно", {
-      parse_mode: "Markdown",
-      ...keyboard,
-    });
+  try {
+    if (team.photoFileId) {
+      msg = await ctx.replyWithPhoto(team.photoFileId, {
+        caption,
+        parse_mode: "Markdown",
+        ...keyboard,
+      });
+    } else if (team.fileName && fs.existsSync(path.join(uploadDir, team.fileName))) {
+      msg = await ctx.replyWithPhoto({ source: path.join(uploadDir, team.fileName) }, {
+        caption,
+        parse_mode: "Markdown",
+        ...keyboard,
+      });
+    } else {
+      msg = await ctx.reply(caption + "\n\n📷 Фото недоступно", {
+        parse_mode: "Markdown",
+        ...keyboard,
+      });
+    }
+  } catch (error) {
+    console.error("Ошибка при отправке сообщения:", error);
+    // В случае ошибки отправляем сообщение без Markdown
+    const simpleCaption = `Команда ${idx + 1} из ${total}
+
+Название: ${team.name || "не указано"}
+Город: ${team.city || "не указано"}
+Возраст: ${team.ageRange || "не указано"}
+Преподаватели: ${team.instructors || "не указано"}
+Достижения: ${team.achievements?.join(", ") || "не указано"}
+Описание: ${team.description || "не указано"}`;
+
+    if (team.photoFileId) {
+      msg = await ctx.replyWithPhoto(team.photoFileId, {
+        caption: simpleCaption,
+        ...keyboard,
+      });
+    } else if (team.fileName && fs.existsSync(path.join(uploadDir, team.fileName))) {
+      msg = await ctx.replyWithPhoto({ source: path.join(uploadDir, team.fileName) }, {
+        caption: simpleCaption,
+        ...keyboard,
+      });
+    } else {
+      msg = await ctx.reply(simpleCaption + "\n\nФото недоступно", {
+        ...keyboard,
+      });
+    }
   }
 
   ctx.wizard.state.currentMessageId = msg.message_id;

@@ -35,7 +35,7 @@ const createTeamScene = new Scenes.WizardScene(
         }
         return ctx.wizard.next();
       }
-      if (action === "back") return; // назад пока нет, на шаге 0
+      if (action === "back") return;
       if (action === "stop") {
         await clearMessages(ctx);
         return ctx.scene.leave();
@@ -193,7 +193,7 @@ const createTeamScene = new Scenes.WizardScene(
     return ctx.wizard.next();
   },
 
-  // 6 - достижения и сохранение
+  // 6 - достижения
   async (ctx) => {
     if (ctx.callbackQuery) {
       const action = ctx.callbackQuery.data;
@@ -216,6 +216,32 @@ const createTeamScene = new Scenes.WizardScene(
       ? ctx.message.text.split(";").map(a => a.trim())
       : [];
 
+    await deleteOne(ctx);
+    await showPreview(ctx, "описание команды", 6);
+    return ctx.wizard.next();
+  },
+
+  // 7 - описание команды
+  async (ctx) => {
+    if (ctx.callbackQuery) {
+      const action = ctx.callbackQuery.data;
+      try { await ctx.answerCbQuery(); } catch {}
+      if (action === "back") {
+        await deleteOne(ctx);
+        await showPreview(ctx, "достижения команды (через ;)", 5);
+        return ctx.wizard.back();
+      }
+      if (action === "stop") {
+        await clearMessages(ctx);
+        return ctx.scene.leave();
+      }
+    }
+
+    const valid = await validate(ctx, "Напиши описание команды!", "text");
+    if (!valid) return;
+
+    ctx.wizard.state.data.description = ctx.message?.text?.trim();
+
     try {
       await deleteOne(ctx);
       const fileData = await savePhoto(ctx, ctx.wizard.state.data.photoFileId);
@@ -230,7 +256,8 @@ const createTeamScene = new Scenes.WizardScene(
           `🏙 Город: ${ctx.wizard.state.data.city}\n` +
           `🎂 Возраст: ${ctx.wizard.state.data.ageRange}\n` +
           `👨‍🏫 Преподаватели: ${ctx.wizard.state.data.instructors}\n` +
-          `🏆 Достижения:\n${ctx.wizard.state.data.achievements.map(a => `• ${a}`).join("\n")}`,
+          `🏆 Достижения:\n${ctx.wizard.state.data.achievements.map(a => `• ${a}`).join("\n")}\n` +
+          `📝 Описание: ${ctx.wizard.state.data.description}`,
       });
     } catch (e) {
       console.error("Create team error:", e);

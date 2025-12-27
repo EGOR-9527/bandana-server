@@ -6,6 +6,12 @@ const path = require("path");
 
 const uploadDir = path.join(__dirname, "../../../uploads");
 
+// Функция для экранирования Markdown символов
+function escapeMarkdown(text) {
+  if (!text) return text;
+  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
+}
+
 const updateEventScene = new Scenes.WizardScene(
   "update_event",
 
@@ -37,9 +43,14 @@ const updateEventScene = new Scenes.WizardScene(
     await ctx.answerCbQuery();
 
     if (data === "back" || data === "next") {
-      idx = data === "back"
-        ? (idx > 0 ? idx - 1 : events.length - 1)
-        : (idx < events.length - 1 ? idx + 1 : 0);
+      idx =
+        data === "back"
+          ? idx > 0
+            ? idx - 1
+            : events.length - 1
+          : idx < events.length - 1
+          ? idx + 1
+          : 0;
 
       ctx.wizard.state.currentIndex = idx;
       await clearCurrentMessage(ctx);
@@ -74,12 +85,13 @@ const updateEventScene = new Scenes.WizardScene(
         photo: "фото",
         description: "описание",
         date: "дату",
-        place: "место"
+        place: "место",
       }[field];
 
-      const text = field === "photo"
-        ? "Пришли новое фото события"
-        : `Напиши новое ${fieldName}:`;
+      const text =
+        field === "photo"
+          ? "Пришли новое фото события"
+          : `Напиши новое ${fieldName}:`;
 
       const msg = await ctx.reply(text);
       ctx.wizard.state.sentMessages.push(msg.message_id);
@@ -115,10 +127,16 @@ const updateEventScene = new Scenes.WizardScene(
           if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
         }
 
-        newData = { fileName: fileData.fileName, photoFileId: photo.file_id };
+        // Формируем новый fileUrl на основе имени файла
+        const fileUrl = `/uploads/${fileData.fileName}`;
+
+        newData = {
+          fileName: fileData.fileName,
+          photoFileId: photo.file_id,
+          fileUrl: fileUrl, // Обновляем fileUrl
+        };
         successMessage = "Фото успешно обновлено!";
-      } 
-      else {
+      } else {
         if (!ctx.message?.text || !ctx.message.text.trim()) {
           await ctx.reply("Пожалуйста, пришли текст");
           return;
@@ -135,12 +153,11 @@ const updateEventScene = new Scenes.WizardScene(
 
       const fresh = await Events.findByPk(eventId);
       if (fresh) {
-        const i = ctx.wizard.state.events.findIndex(e => e.id === eventId);
+        const i = ctx.wizard.state.events.findIndex((e) => e.id === eventId);
         if (i !== -1) ctx.wizard.state.events[i] = fresh;
       }
 
-      await ctx.replyWithMarkdownV2(`*Готово* \n${successMessage}`);
-
+      await ctx.reply(`✅ ${successMessage}`);
     } catch (err) {
       console.error("Ошибка обновления события:", err);
       await ctx.reply("Произошла ошибка при сохранении");
@@ -159,55 +176,88 @@ async function showEventSlide(ctx) {
   const event = ctx.wizard.state.events[idx];
   const total = ctx.wizard.state.events.length;
 
-  const caption = `
-*Событие ${idx + 1} из ${total}*
+  // Экранируем текстовые поля
+  const description = escapeMarkdown(event.description) || "_не указано_";
+  const date = escapeMarkdown(event.date) || "_не указано_";
+  const place = escapeMarkdown(event.place) || "_не указано_";
 
-*Описание*
-${event.description || "_не указано_"}
+  const caption = `*Событие ${idx + 1} из ${total}*
 
-*Дата*
-${event.date || "_не указано_"}
+📝 *Описание*
+${description}
 
-*Место*
-${event.place || "_не указано_"}
-`.trim();
+📅 *Дата*
+${date}
+
+📍 *Место*
+${place}`;
 
   const keyboard = Markup.inlineKeyboard([
     [
-      Markup.button.callback("Назад", "back"),
+      Markup.button.callback("⬅️", "back"),
       Markup.button.callback("Изменить", "edit"),
-      Markup.button.callback("Вперёд", "next"),
+      Markup.button.callback("➡️", "next"),
     ],
   ]);
 
   await clearCurrentMessage(ctx);
 
   let msg;
-  if (event.photoFileId) {
-    try {
+  try {
+    if (event.photoFileId) {
       msg = await ctx.replyWithPhoto(event.photoFileId, {
         caption,
         parse_mode: "Markdown",
         ...keyboard,
       });
-    } catch {
-      msg = await ctx.replyWithPhoto({ source: path.join(uploadDir, event.fileName || "") }, {
-        caption: caption + "\n\n(фото из файла)",
+    } else if (
+      event.fileName &&
+      fs.existsSync(path.join(uploadDir, event.fileName))
+    ) {
+      msg = await ctx.replyWithPhoto(
+        { source: path.join(uploadDir, event.fileName) },
+        {
+          caption,
+          parse_mode: "Markdown",
+          ...keyboard,
+        }
+      );
+    } else {
+      msg = await ctx.reply(caption + "\n\n📷 Фото недоступно", {
         parse_mode: "Markdown",
         ...keyboard,
       });
     }
-  } else if (event.fileName && fs.existsSync(path.join(uploadDir, event.fileName))) {
-    msg = await ctx.replyWithPhoto({ source: path.join(uploadDir, event.fileName) }, {
-      caption,
-      parse_mode: "Markdown",
-      ...keyboard,
-    });
-  } else {
-    msg = await ctx.reply(caption + "\n\nФото недоступно", {
-      parse_mode: "Markdown",
-      ...keyboard,
-    });
+  } catch (error) {
+    console.error("Ошибка при отправке события:", error);
+    // Резервный вариант без Markdown
+    const simpleCaption = `Событие ${idx + 1} из ${total}
+
+Описание: ${event.description || "не указано"}
+Дата: ${event.date || "не указано"}
+Место: ${event.place || "не указано"}`;
+
+    if (event.photoFileId) {
+      msg = await ctx.replyWithPhoto(event.photoFileId, {
+        caption: simpleCaption,
+        ...keyboard,
+      });
+    } else if (
+      event.fileName &&
+      fs.existsSync(path.join(uploadDir, event.fileName))
+    ) {
+      msg = await ctx.replyWithPhoto(
+        { source: path.join(uploadDir, event.fileName) },
+        {
+          caption: simpleCaption,
+          ...keyboard,
+        }
+      );
+    } else {
+      msg = await ctx.reply(simpleCaption + "\n\nФото недоступно", {
+        ...keyboard,
+      });
+    }
   }
 
   ctx.wizard.state.currentMessageId = msg.message_id;
@@ -216,7 +266,9 @@ ${event.place || "_не указано_"}
 
 async function clearCurrentMessage(ctx) {
   for (const id of ctx.wizard.state.sentMessages || []) {
-    try { await ctx.deleteMessage(id); } catch {}
+    try {
+      await ctx.deleteMessage(id);
+    } catch {}
   }
   ctx.wizard.state.sentMessages = [];
 }
