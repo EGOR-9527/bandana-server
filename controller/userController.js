@@ -1,5 +1,5 @@
 const path = require("path");
-const bot = require("../bot/bot")
+const bot = require("../bot/bot");
 const Events = require("../models/events");
 const Gallery = require("../models/gallery");
 const Video = require("../models/video");
@@ -99,14 +99,20 @@ class UserController {
         req.body;
 
       const text = `
-📩 *Новая заявка с сайта*:
-👨‍👩‍👧 Родитель: ${fullNameKid}
-👶 Ребенок: ${fullNameAdult}
-🎂 Возраст: ${age}
-📞 Телефон: ${phone}
-🏙 Город: ${city}
-💬 Сообщение: ${message || "-"}
-      `;
+─────────────────────────────
+📩 *Новая заявка с сайта*
+
+👨‍👩‍👧 *Родитель:* ${fullNameKid}
+👶 *Ребенок:* ${fullNameAdult}
+🎂 *Возраст:* ${age} лет
+📞 *Телефон:* ${phone}
+🏙 *Город:* ${city}
+
+💬 *Сообщение:*
+${message || "_Нет сообщения_"}
+
+─────────────────────────────
+`;
 
       const ADMINS_ID = process.env.ADMINS_ID.split(",").map((id) =>
         Number(id)
