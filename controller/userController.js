@@ -5,7 +5,7 @@ const Gallery = require("../models/gallery");
 const Video = require("../models/video");
 const Teams = require("../models/teams")
 
-const BASE_URL = "http://localhost:5000";
+const BASE_URL = "https://bandana-dance.ru";
 
 const getCleanFilename = (fileUrl) => {
   if (!fileUrl) return "";
