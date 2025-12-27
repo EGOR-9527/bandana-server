@@ -199,21 +199,32 @@ async function showVideoSlide(ctx) {
 
   await clearCurrentMessage(ctx);
 
-  let msg;
   const filePath = path.join(__dirname, "../../../uploads", video.fileName);
-  console.log(filePath);
+  let msg;
+
+  let tooLarge = false;
   if (fs.existsSync(filePath)) {
+    const stats = fs.statSync(filePath);
+    if (stats.size > 50 * 1024 * 1024) {
+      tooLarge = true;
+    }
+  } else {
+    tooLarge = true;
+  }
+
+  if (!tooLarge) {
     msg = await ctx.replyWithVideo(
       { source: filePath },
       {
-        caption: `🎬 ${video.name}\n\n${idx + 1}/${
-          ctx.wizard.state.videos.length
-        }`,
+        caption: `🎬 ${video.name}\n\n${idx + 1}/${ctx.wizard.state.videos.length}`,
         ...keyboard,
       }
     );
   } else {
-    msg = await ctx.reply(`❌ Видео недоступно\n🎬 ${video.name}`, keyboard);
+    msg = await ctx.reply(
+      `🎬 ${video.name}\n\n${idx + 1}/${ctx.wizard.state.videos.length}\n❌ Видео слишком большое для отправки`,
+      keyboard
+    );
   }
 
   ctx.wizard.state.currentMessageId = msg.message_id;
