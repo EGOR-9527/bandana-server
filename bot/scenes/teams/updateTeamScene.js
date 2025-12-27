@@ -8,7 +8,7 @@ const uploadDir = path.join(__dirname, "../../../uploads");
 
 function escapeMarkdown(text) {
   if (!text) return text;
-  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
 }
 
 const updateTeamScene = new Scenes.WizardScene(
@@ -42,9 +42,14 @@ const updateTeamScene = new Scenes.WizardScene(
     await ctx.answerCbQuery();
 
     if (data === "back" || data === "next") {
-      idx = data === "back"
-        ? (idx > 0 ? idx - 1 : teams.length - 1)
-        : (idx < teams.length - 1 ? idx + 1 : 0);
+      idx =
+        data === "back"
+          ? idx > 0
+            ? idx - 1
+            : teams.length - 1
+          : idx < teams.length - 1
+          ? idx + 1
+          : 0;
 
       ctx.wizard.state.currentIndex = idx;
       await clearCurrentMessage(ctx);
@@ -91,9 +96,10 @@ const updateTeamScene = new Scenes.WizardScene(
       };
       const fieldName = fieldNames[field] || field;
 
-      const text = field === "photo"
-        ? "Пришли новое фото команды"
-        : `Напиши новое значение для ${fieldName}:`;
+      const text =
+        field === "photo"
+          ? "Пришли новое фото команды"
+          : `Напиши новое значение для ${fieldName}:`;
 
       const msg = await ctx.reply(text);
       ctx.wizard.state.sentMessages.push(msg.message_id);
@@ -130,19 +136,25 @@ const updateTeamScene = new Scenes.WizardScene(
         }
 
         const fileUrl = `/uploads/${fileData.fileName}`;
-        
-        newData = { 
-          fileName: fileData.fileName, 
+
+        newData = {
+          fileName: fileData.fileName,
           photoFileId: photo.file_id,
-          fileUrl: fileUrl
+          fileUrl: fileUrl,
         };
         successMessage = "Фото успешно обновлено!";
       } else if (field === "achievements") {
         if (!ctx.message?.text?.trim()) {
-          await ctx.reply("Пожалуйста, пришли текст достижений через точку с запятой (;)");
+          await ctx.reply(
+            "Пожалуйста, пришли текст достижений через точку с запятой (;)"
+          );
           return;
         }
-        const achievements = ctx.message.text.trim().split(";").map(a => a.trim()).filter(a => a);
+        const achievements = ctx.message.text
+          .trim()
+          .split(";")
+          .map((a) => a.trim())
+          .filter((a) => a);
         newData = { achievements: achievements };
         successMessage = "Достижения обновлены!";
       } else {
@@ -152,7 +164,7 @@ const updateTeamScene = new Scenes.WizardScene(
         }
         const text = ctx.message.text.trim();
         newData = { [field]: text };
-        
+
         const fieldTitles = {
           name: "Название",
           city: "Город",
@@ -168,12 +180,11 @@ const updateTeamScene = new Scenes.WizardScene(
 
       const fresh = await Teams.findByPk(teamId);
       if (fresh) {
-        const i = ctx.wizard.state.teams.findIndex(t => t.id === teamId);
+        const i = ctx.wizard.state.teams.findIndex((t) => t.id === teamId);
         if (i !== -1) ctx.wizard.state.teams[i] = fresh;
       }
 
       await ctx.reply(`✅ ${successMessage}`);
-
     } catch (err) {
       console.error("Ошибка обновления команды:", err);
       await ctx.reply("Произошла ошибка при сохранении");
@@ -198,11 +209,11 @@ async function showTeamSlide(ctx) {
   const instructors = escapeMarkdown(team.instructors) || "_не указано_";
   const choreographer = escapeMarkdown(team.choreographer) || "_не указано_";
   const description = escapeMarkdown(team.description) || "_не указано_";
-  
+
   let achievementsText = "_не указано_";
   if (team.achievements?.length) {
-    const escapedAchievements = team.achievements.map(a => escapeMarkdown(a));
-    achievementsText = escapedAchievements.map(a => `• ${a}`).join("\n");
+    const escapedAchievements = team.achievements.map((a) => escapeMarkdown(a));
+    achievementsText = escapedAchievements.map((a) => `• ${a}`).join("\n");
   }
 
   const caption = `*Команда ${idx + 1} из ${total}*
@@ -217,9 +228,7 @@ async function showTeamSlide(ctx) {
 ${description}
 
 🏆 *Достижения:*
-${achievementsText}
-
-🔗 *Путь файла:* ${team.fileUrl || "_не указан_"}`;
+${achievementsText}`;
 
   const keyboard = Markup.inlineKeyboard([
     [
@@ -239,12 +248,18 @@ ${achievementsText}
         parse_mode: "Markdown",
         ...keyboard,
       });
-    } else if (team.fileName && fs.existsSync(path.join(uploadDir, team.fileName))) {
-      msg = await ctx.replyWithPhoto({ source: path.join(uploadDir, team.fileName) }, {
-        caption,
-        parse_mode: "Markdown",
-        ...keyboard,
-      });
+    } else if (
+      team.fileName &&
+      fs.existsSync(path.join(uploadDir, team.fileName))
+    ) {
+      msg = await ctx.replyWithPhoto(
+        { source: path.join(uploadDir, team.fileName) },
+        {
+          caption,
+          parse_mode: "Markdown",
+          ...keyboard,
+        }
+      );
     } else {
       msg = await ctx.reply(caption + "\n\n📷 Фото недоступно", {
         parse_mode: "Markdown",
@@ -264,23 +279,27 @@ ${achievementsText}
 Описание: ${team.description || "не указано"}
 
 Достижения: ${
-  team.achievements?.length 
-    ? team.achievements.map(a => `• ${a}`).join("\n")
-    : "не указано"
-}
-
-Путь файла: ${team.fileUrl || "не указан"}`;
+      team.achievements?.length
+        ? team.achievements.map((a) => `• ${a}`).join("\n")
+        : "не указано"
+    }`;
 
     if (team.photoFileId) {
       msg = await ctx.replyWithPhoto(team.photoFileId, {
         caption: simpleCaption,
         ...keyboard,
       });
-    } else if (team.fileName && fs.existsSync(path.join(uploadDir, team.fileName))) {
-      msg = await ctx.replyWithPhoto({ source: path.join(uploadDir, team.fileName) }, {
-        caption: simpleCaption,
-        ...keyboard,
-      });
+    } else if (
+      team.fileName &&
+      fs.existsSync(path.join(uploadDir, team.fileName))
+    ) {
+      msg = await ctx.replyWithPhoto(
+        { source: path.join(uploadDir, team.fileName) },
+        {
+          caption: simpleCaption,
+          ...keyboard,
+        }
+      );
     } else {
       msg = await ctx.reply(simpleCaption + "\n\nФото недоступно", {
         ...keyboard,
@@ -294,7 +313,9 @@ ${achievementsText}
 
 async function clearCurrentMessage(ctx) {
   for (const id of ctx.wizard.state.sentMessages || []) {
-    try { await ctx.deleteMessage(id); } catch {}
+    try {
+      await ctx.deleteMessage(id);
+    } catch {}
   }
   ctx.wizard.state.sentMessages = [];
 }
