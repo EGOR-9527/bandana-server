@@ -111,8 +111,18 @@ async function showVideoSlide(ctx) {
   const projectRoot = path.resolve(__dirname, "../../..");
   const filePath = path.join(projectRoot, "uploads", video.fileName);
 
-  let msg;
+  let tooLarge = false;
   if (fs.existsSync(filePath)) {
+    const stats = fs.statSync(filePath);
+    if (stats.size > 50 * 1024 * 1024) { // 50 MB
+      tooLarge = true;
+    }
+  } else {
+    tooLarge = true;
+  }
+
+  let msg;
+  if (!tooLarge) {
     msg = await ctx.replyWithVideo(
       { source: filePath },
       {
@@ -121,12 +131,16 @@ async function showVideoSlide(ctx) {
       }
     );
   } else {
-    msg = await ctx.reply(`❌ Видео недоступно\n🎬 ${video.name}`, keyboard);
+    msg = await ctx.reply(
+      `🎬 ${video.name}\n\n${idx + 1}/${ctx.wizard.state.videos.length}\n❌ Видео слишком большое для отправки`,
+      keyboard
+    );
   }
 
   ctx.wizard.state.currentMessageId = msg.message_id;
   ctx.wizard.state.sentMessages.push(msg.message_id);
 }
+
 
 // Очистка всех сообщений сцены
 async function clearCurrentMessage(ctx) {
