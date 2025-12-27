@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const redis = require("redis");
 require("dotenv").config();
 
 const sequelize = require("./config/db");
@@ -10,64 +11,102 @@ const bot = require("./bot/bot");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Простая, но мощная защита от DDoS — без Redis (чтобы не падало вообще никогда)
-const rateLimitMap = new Map();
+const redisClient = redis.createClient({
+  socket: {
+    host: process.env.REDIS_HOST,
+    port: process.env.REDIS_PORT
+  }
+});
+redisClient.connect();
+redisClient.on("connect", () => console.log("Redis подключён"));
+redisClient.on("error", (err) => console.error("Ошибка Redis:", err));
+
+const ALLOWED_ORIGINS = [
+  "https://bandana-dance.ru",
+  "https://www.bandana-dance.ru"
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    return callback(new Error("Forbidden Origin"));
+  },
+  credentials: true
+}));
 
 app.use((req, res, next) => {
-  const ip = req.headers['cf-connecting-ip'] || req.ip || "unknown";
-  const now = Date.now();
+  const origin = req.headers.origin;
+  const referer = req.headers.referer;
 
-  if (!rateLimitMap.has(ip)) {
-    rateLimitMap.set(ip, { count: 1, resetTime: now + 60000 });
-  } else {
-    const data = rateLimitMap.get(ip);
-    if (now > data.resetTime) {
-      rateLimitMap.set(ip, { count: 1, resetTime: now + 60000 });
-    } else {
-      data.count++;
-      if (data.count > 180) {
-        return res.status(429).json({
-          success: false,
-          message: "Защита от DDoS: слишком много запросов. Подождите минуту."
-        });
-      }
-    }
+  const allowed =
+    (!origin || ALLOWED_ORIGINS.includes(origin)) &&
+    (!referer || ALLOWED_ORIGINS.some(url => referer.startsWith(url)));
+
+  if (!allowed) {
+    return res.status(403).json({
+      success: false,
+      message: "Запросы разрешены только с https://bandana-dance.ru"
+    });
   }
+
   next();
 });
+ 
+const MAX = parseInt(process.env.RATE_LIMIT_MAX);
+const WINDOW = parseInt(process.env.RATE_LIMIT_WINDOW_MS);
+const SLOW_AFTER = parseInt(process.env.SLOW_DOWN_AFTER);
+const SLOW_DELAY = parseInt(process.env.SLOW_DOWN_DELAY_MS);
 
-// CORS — полностью открытый, но безопасный для твоего случая
-app.use(cors());
-app.use(express.json({ limit: "15mb" }));
+app.use(async (req, res, next) => {
+  try {
+    const ip =
+      req.headers["cf-connecting-ip"] ||
+      req.headers["x-forwarded-for"] ||
+      req.ip;
 
-// Статические файлы
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+    const redisKey = `ratelimit:${ip}`;
 
-// API
-app.use("/api", photosRouter);
+    const requests = await redisClient.incr(redisKey);
 
-// Главная страница — чтобы жюри сразу увидело, что работает
-app.get("/", (req, res) => {
-  res.send(`
-    <h1>Bandana Dance — Работающий проект</h1>
-    <h2>Защита от DDoS-атак активна</h2>
-    <p>Запросов с вашего IP: ${rateLimitMap.get(req.ip || "unknown")?.count || 0}</p>
-    <p>Порт: ${PORT}</p>
-  `);
+    if (requests === 1) {
+      await redisClient.expire(redisKey, WINDOW / 1000);
+    }
+
+    if (requests > MAX) {
+      return res.status(429).json({
+        success: false,
+        message: process.env.RATE_LIMIT_MESSAGE
+      });
+    }
+
+    if (requests > SLOW_AFTER) {
+      const extraDelay = (requests - SLOW_AFTER) * SLOW_DELAY;
+      await new Promise(r => setTimeout(r, extraDelay));
+    }
+
+    next();
+  } catch (err) {
+    console.error("Ошибка rate-limit:", err);
+    next();
+  }
 });
+
+app.use(express.json({ limit: "20mb" }));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/api", photosRouter);
 
 const start = async () => {
   try {
     await sequelize.authenticate();
     console.log("PostgreSQL подключена");
     await sequelize.sync();
-    
+
     bot.start();
     console.log("Telegram-бот запущен");
 
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Сервер запущен на порту ${PORT}`);
-      console.log(`Открой: https://bandana-dance.ru:${PORT}`);
+      console.log(`Сервер запущен на ${PORT}`);
     });
   } catch (err) {
     console.error("Ошибка запуска:", err);
