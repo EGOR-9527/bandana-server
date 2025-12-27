@@ -1,213 +1,203 @@
-// bot/scenes/updateVideoScene.js
 const { Scenes, Markup } = require("telegraf");
-const Video = require("../../../models/video");
+const Gallery = require("../../../models/gallery");
+const { savePhoto, validate } = require("../../helpers/telegram");
 const fs = require("fs");
 const path = require("path");
-const { getYandexDirectLink, saveVideoFromUrl, clearMessages } = require("../../helpers/telegram");
 
 const UPLOADS_DIR = path.join(__dirname, "../../../uploads");
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-// -------------------------------
-// Сцена обновления видео
-// -------------------------------
-const updateVideoScene = new Scenes.WizardScene(
-  "update_video",
+// ================================
+// Сцена обновления фото
+// ================================
+const updatePhotoScene = new Scenes.WizardScene(
+  "update_photo",
 
-  // -------------------------------
-  // Шаг 0 — выбор видео
-  // -------------------------------
+  // ---------- Шаг 0: Загрузка фото ----------
   async (ctx) => {
+    const photos = await Gallery.findAll({ order: [["id", "ASC"]] });
     ctx.wizard.state.sentMessages = [];
-    ctx.wizard.state.videos = await Video.findAll({ order: [["id", "ASC"]] });
+    ctx.wizard.state.fieldToEdit = null;
+    ctx.wizard.state.photos = photos;
+    ctx.wizard.state.currentIndex = 0;
 
-    if (!ctx.wizard.state.videos.length) {
-      await ctx.reply("Видео пока нет");
+    if (!photos.length) {
+      await ctx.reply("❗ Фото в галерее пока нет");
       return ctx.scene.leave();
     }
 
-    ctx.wizard.state.currentIndex = 0;
-    await showVideoSlide(ctx);
+    await showPhotoSlide(ctx);
     return ctx.wizard.next();
   },
 
-  // -------------------------------
-  // Шаг 1 — выбор поля для редактирования
-  // -------------------------------
+  // ---------- Шаг 1: Выбор фото и поля для редактирования ----------
   async (ctx) => {
     if (!ctx.callbackQuery) return;
 
     const data = ctx.callbackQuery.data;
-    const videos = ctx.wizard.state.videos;
+    const photos = ctx.wizard.state.photos;
     let idx = ctx.wizard.state.currentIndex;
+    await ctx.answerCbQuery().catch(() => {});
 
-    await ctx.answerCbQuery();
+    // --- Навигация по слайдам ---
+    if (data === "back") idx = idx > 0 ? idx - 1 : photos.length - 1;
+    if (data === "next") idx = idx < photos.length - 1 ? idx + 1 : 0;
 
-    if (data === "back") idx = idx > 0 ? idx - 1 : videos.length - 1;
-    if (data === "next") idx = idx < videos.length - 1 ? idx + 1 : 0;
     ctx.wizard.state.currentIndex = idx;
 
     if (data === "back" || data === "next") {
       await clearCurrentMessage(ctx);
-      await showVideoSlide(ctx);
+      await showPhotoSlide(ctx);
       return;
     }
 
+    // --- Редактирование ---
     if (data === "edit") {
       const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback("Видео", "field_video")],
-        [Markup.button.callback("Название", "field_name")],
+        [Markup.button.callback("Новое фото", "field_photo")],
+        [Markup.button.callback("Подпись", "field_footer")],
+        [Markup.button.callback("Фильтр", "field_filter")],
         [Markup.button.callback("Назад к просмотру", "back_to_slider")],
       ]);
       await ctx.editMessageReplyMarkup(keyboard.reply_markup);
       return;
     }
 
+    // --- Вернуться к слайдам ---
     if (data === "back_to_slider") {
-      await showVideoSlide(ctx);
+      await showPhotoSlide(ctx);
       return;
     }
 
+    // --- Выбор поля для редактирования ---
     if (data.startsWith("field_")) {
       ctx.wizard.state.fieldToEdit = data.replace("field_", "");
-      ctx.session.editVideoId = videos[idx].id;
+      ctx.session.editPhotoId = photos[idx].id;
 
-      const prompt =
-        ctx.wizard.state.fieldToEdit === "video"
-          ? "Пришли ссылку на новое видео с Яндекс.Диска"
-          : "Напиши новое название видео";
+      const messages = {
+        photo: "📸 Пришли новое фото для галереи",
+        footer: "✏ Напиши новую подпись под фото",
+        filter: "🎨 Укажи новый фильтр (например: black&white, vintage и т.д.)",
+      };
 
-      const msg = await ctx.reply(prompt);
+      const msg = await ctx.reply(messages[ctx.wizard.state.fieldToEdit] || "✏ Пришли новое значение:");
       ctx.wizard.state.sentMessages.push(msg.message_id);
+
       return ctx.wizard.next();
     }
   },
 
-  // -------------------------------
-  // Шаг 2 — получение нового значения
-  // -------------------------------
+  // ---------- Шаг 2: Получение нового значения ----------
   async (ctx) => {
     const field = ctx.wizard.state.fieldToEdit;
-    const videoId = ctx.session.editVideoId;
-    if (!field || !videoId) return ctx.scene.leave();
-
-    const video = await Video.findByPk(videoId);
-    if (!video) return ctx.scene.leave();
+    const photoId = ctx.session.editPhotoId;
+    if (!field || !photoId) return ctx.scene.leave();
 
     let newData = {};
-
     try {
-      if (field === "video") {
-        const publicUrl = ctx.message?.text?.trim();
-        if (!publicUrl) {
-          const msg = await ctx.reply("❌ Отправь корректную ссылку на видео");
-          ctx.wizard.state.sentMessages.push(msg.message_id);
-          return;
-        }
+      if (field === "photo") {
+        const valid = await validate(ctx, "📸 Отправь фото!", "photo");
+        if (!valid) return;
 
-        const directUrl = await getYandexDirectLink(publicUrl);
-        if (!directUrl) {
-          const msg = await ctx.reply("❌ Не удалось получить прямую ссылку");
-          ctx.wizard.state.sentMessages.push(msg.message_id);
-          return;
-        }
+        const photo = ctx.message.photo.pop();
+        const fileData = await savePhoto(ctx, photo.file_id, UPLOADS_DIR);
 
-        const saved = await saveVideoFromUrl(directUrl);
-        if (!saved) {
-          const msg = await ctx.reply("❌ Не удалось скачать видео");
-          ctx.wizard.state.sentMessages.push(msg.message_id);
-          return;
-        }
-
-        // Удаляем старый файл
-        if (video.fileName) {
-          const oldPath = path.join(UPLOADS_DIR, video.fileName);
+        // Удаляем старое фото с сервера
+        const old = await Gallery.findByPk(photoId);
+        if (old?.fileName) {
+          const oldPath = path.join(UPLOADS_DIR, old.fileName);
           if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
         }
 
-        newData = { fileName: saved.fileName, fileUrl: saved.filePath };
-        await ctx.reply("✅ Видео обновлено");
-      } else if (field === "name") {
-        const name = ctx.message?.text?.trim();
-        if (!name) {
-          const msg = await ctx.reply("❌ Название не может быть пустым");
-          ctx.wizard.state.sentMessages.push(msg.message_id);
-          return;
-        }
-        newData = { name };
-        await ctx.reply("✅ Название обновлено");
+        newData = { fileName: fileData.fileName, photoFileId: photo.file_id };
+        await ctx.reply("✅ Фото обновлено");
+
+      } else {
+        const valid = await validate(ctx, `✏ Отправь новое значение для ${field}!`, "text");
+        if (!valid) return;
+
+        const text = ctx.message.text.trim();
+        newData = { [field]: text };
+        await ctx.reply(`✅ ${field.charAt(0).toUpperCase() + field.slice(1)} обновлено`);
       }
 
-      await Video.update(newData, { where: { id: videoId } });
+      await Gallery.update(newData, { where: { id: photoId } });
 
-      const updated = await Video.findByPk(videoId);
-      if (updated) {
-        const i = ctx.wizard.state.videos.findIndex((v) => v.id === videoId);
-        if (i !== -1) ctx.wizard.state.videos[i] = updated;
-      }
+      // Обновляем локальный массив
+      const updated = await Gallery.findByPk(photoId);
+      const i = ctx.wizard.state.photos.findIndex(p => p.id === photoId);
+      if (i !== -1) ctx.wizard.state.photos[i] = updated;
+
     } catch (err) {
-      console.error("Ошибка при обновлении видео:", err);
-      await ctx.reply("❌ Ошибка при обновлении. Попробуй снова.");
+      console.error("Ошибка при обновлении фото:", err);
+      await ctx.reply("❌ Ошибка при сохранении. Попробуй ещё раз.");
     }
 
     ctx.wizard.state.fieldToEdit = null;
-    delete ctx.session.editVideoId;
+    delete ctx.session.editPhotoId;
 
-    await showVideoSlide(ctx);
+    await showPhotoSlide(ctx);
     return ctx.wizard.selectStep(1);
   }
 );
 
-// -------------------------------
-// Функция для показа видео
-// -------------------------------
-async function showVideoSlide(ctx) {
+// ================================
+// Функция показа фото
+// ================================
+async function showPhotoSlide(ctx) {
   const idx = ctx.wizard.state.currentIndex;
-  const video = ctx.wizard.state.videos[idx];
+  const photo = ctx.wizard.state.photos[idx];
+  const filePath = path.join(UPLOADS_DIR, photo.fileName);
+  const total = ctx.wizard.state.photos.length;
+
+  const caption = `*Фото ${idx + 1} из ${total}*\nПодпись: ${photo.footer || "_не указана_"}\nФильтр: ${photo.filter || "_не указан_"}`;
 
   const keyboard = Markup.inlineKeyboard([
     [
       Markup.button.callback("⬅️", "back"),
+      Markup.button.callback("Назад", "back"),
       Markup.button.callback("Изменить", "edit"),
       Markup.button.callback("➡️", "next"),
+      Markup.button.callback("Вперёд", "next"),
     ],
   ]);
 
   await clearCurrentMessage(ctx);
 
   let msg;
-  const filePath = video.fileName
-    ? path.join(UPLOADS_DIR, video.fileName)
-    : null;
-
-  if (filePath && fs.existsSync(filePath)) {
-    msg = await ctx.replyWithVideo(
-      { source: filePath },
-      {
-        caption: `🎬 ${video.name}\n\n${idx + 1}/${
-          ctx.wizard.state.videos.length
-        }`,
-        ...keyboard,
+  if (photo.photoFileId) {
+    try {
+      msg = await ctx.replyWithPhoto(photo.photoFileId, { caption, parse_mode: "Markdown", ...keyboard });
+    } catch {
+      if (fs.existsSync(filePath)) {
+        msg = await ctx.replyWithPhoto({ source: filePath }, { caption, parse_mode: "Markdown", ...keyboard });
       }
-    );
+    }
+  } else if (fs.existsSync(filePath)) {
+    msg = await ctx.replyWithPhoto({ source: filePath }, { caption, parse_mode: "Markdown", ...keyboard });
   } else {
-    msg = await ctx.reply(`❌ Видео недоступно\n🎬 ${video.name}`, keyboard);
+    msg = await ctx.reply(`${caption}\n\nФото недоступно на сервере`, { parse_mode: "Markdown", ...keyboard });
   }
 
   ctx.wizard.state.currentMessageId = msg.message_id;
   ctx.wizard.state.sentMessages.push(msg.message_id);
 }
 
-// -------------------------------
+// ================================
 // Очистка сообщений сцены
-// -------------------------------
+// ================================
 async function clearCurrentMessage(ctx) {
   for (const id of ctx.wizard.state.sentMessages || []) {
-    try {
-      await ctx.deleteMessage(id);
-    } catch {}
+    try { await ctx.deleteMessage(id); } catch {}
   }
   ctx.wizard.state.sentMessages = [];
 }
 
-module.exports = updateVideoScene;
+// ================================
+// Экранирование Markdown
+// ================================
+String.prototype.escapeMarkdown = function () {
+  return this.replace(/([_*[\]()~>`#+\-=|{}.!])/g, "\\$1");
+};
+
+module.exports = updatePhotoScene;
