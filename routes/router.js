@@ -7,4 +7,6 @@ router.get("/gallery", UserController.getGallery);
 router.get("/video", UserController.getVideo);
 router.get("/gallery-filters", UserController.getGalleryFilters);
 
+router.post("/contact", UserController.postContactForm);
+
 module.exports = router;

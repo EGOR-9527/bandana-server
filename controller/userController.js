@@ -1,11 +1,10 @@
 const path = require("path");
-
+const bot = require("../bot/bot")
 const Events = require("../models/events");
 const Gallery = require("../models/gallery");
 const Video = require("../models/video");
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:5000";
-
 
 const getCleanFilename = (fileUrl) => {
   if (!fileUrl) return "";
@@ -45,14 +44,12 @@ class UserController {
     try {
       const images = await Gallery.findAll({
         attributes: ["filter"],
-        raw: true, 
+        raw: true,
       });
 
       const uniqueFilters = [
         ...new Set(
-          images
-            .map((img) => img.filter)
-            .filter((f) => f && f.trim() !== "")
+          images.map((img) => img.filter).filter((f) => f && f.trim() !== "")
         ),
       ];
 
@@ -92,6 +89,37 @@ class UserController {
       res.json({ success: true, data: result });
     } catch (err) {
       console.error("Ошибка getVideo:", err);
+      res.status(500).json({ success: false, message: "Ошибка сервера" });
+    }
+  }
+
+  async postContactForm(req, res) {
+    try {
+      const { fullNameKid, fullNameAdult, age, phone, city, message } =
+        req.body;
+
+      const text = `
+📩 *Новая заявка с сайта*:
+👨‍👩‍👧 Родитель: ${fullNameKid}
+👶 Ребенок: ${fullNameAdult}
+🎂 Возраст: ${age}
+📞 Телефон: ${phone}
+🏙 Город: ${city}
+💬 Сообщение: ${message || "-"}
+      `;
+
+      const ADMINS_ID = process.env.ADMINS_ID.split(",").map((id) =>
+        Number(id)
+      );
+      for (const adminId of ADMINS_ID) {
+        await bot.telegram.sendMessage(adminId, text, {
+          parse_mode: "Markdown",
+        });
+      }
+
+      res.json({ success: true, message: "Форма отправлена!" });
+    } catch (err) {
+      console.error("Ошибка contactForm:", err);
       res.status(500).json({ success: false, message: "Ошибка сервера" });
     }
   }
