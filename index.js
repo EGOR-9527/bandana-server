@@ -3,7 +3,6 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const redis = require("redis");
 
 const sequelize = require("./config/db");
 const photosRouter = require("./routes/router");
@@ -42,21 +41,37 @@ app.use(express.json({ limit: "20mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 /* ============================================================
-Redis (GRACEFUL)
+Redis (опционально)
 ============================================================ */
 
 let redisClient = null;
+let redis;
+
+const USE_REDIS = process.env.USE_REDIS !== "false"; // можно отключить через .env
+
+if (USE_REDIS) {
+  try {
+    redis = require("redis");
+  } catch (err) {
+    console.warn("⚠️ Пакет 'redis' не установлен, Redis отключён");
+  }
+}
 
 async function initRedis() {
+  if (!USE_REDIS || !redis) {
+    console.log("⚠️ Redis отключён (тестовый режим)");
+    return;
+  }
+
   try {
     redisClient = redis.createClient({
       socket: {
         host: process.env.REDIS_HOST || "127.0.0.1",
-        port: Number(process.env.REDIS_PORT) || 6379
-      }
+        port: Number(process.env.REDIS_PORT) || 6379,
+      },
     });
 
-    redisClient.on("error", err => {
+    redisClient.on("error", (err) => {
       console.error("❌ Redis error:", err.message);
     });
 
@@ -78,7 +93,7 @@ const SLOW_AFTER = Number(process.env.SLOW_DOWN_AFTER) || 100;
 const SLOW_DELAY = Number(process.env.SLOW_DOWN_DELAY_MS) || 50;
 
 app.use(async (req, res, next) => {
-  if (!redisClient || !redisClient.isOpen) {
+  if (!USE_REDIS || !redisClient || !redisClient.isOpen) {
     return next();
   }
 
@@ -100,13 +115,13 @@ app.use(async (req, res, next) => {
         success: false,
         message:
           process.env.RATE_LIMIT_MESSAGE ||
-          "Слишком много запросов, попробуйте позже"
+          "Слишком много запросов, попробуйте позже",
       });
     }
 
     if (requests > SLOW_AFTER) {
       const delay = (requests - SLOW_AFTER) * SLOW_DELAY;
-      await new Promise(r => setTimeout(r, delay));
+      await new Promise((r) => setTimeout(r, delay));
     }
 
     next();

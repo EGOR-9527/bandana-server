@@ -88,16 +88,18 @@ async function clearMessages(ctx) {
   ctx.wizard.state.data = {};
 }
 
-// =======================
-//   Предпросмотр данных (фото или видео)
-// =======================
-async function showPreview(ctx, stepName, stepIndex = 0) {
+async function showPreview(ctx, stepName, options = {}) {
+  const { stepIndex = 0, titleFields = [], deleteOld = true } = options;
+
   const d = ctx.wizard.state.data || {};
   let text = `📋 Предпросмотр:\n\n`;
-  if (d.name) text += `🎬 Название: ${d.name}\n`;
-  if (d.description) text += `📝 ${d.description}\n`;
-  if (d.date) text += `📅 ${d.date}\n`;
-  if (d.place) text += `📍 ${d.place}\n`;
+
+  for (const field of titleFields) {
+    if (d[field.key]) {
+      text += `${field.icon || ""} ${field.label}: ${d[field.key]}\n`;
+    }
+  }
+
   text += `\nШаг: ${stepName}\nОтправь новое значение или используй кнопки:`;
 
   const keyboard = Markup.inlineKeyboard([
@@ -110,8 +112,7 @@ async function showPreview(ctx, stepName, stepIndex = 0) {
 
   if (!ctx.wizard.state.sentMessages) ctx.wizard.state.sentMessages = [];
 
-  // удаляем старый preview, если есть
-  if (ctx.wizard.state.sentMessages[stepIndex]) {
+  if (deleteOld && ctx.wizard.state.sentMessages[stepIndex]) {
     try {
       await ctx.deleteMessage(ctx.wizard.state.sentMessages[stepIndex]);
     } catch {}
@@ -173,7 +174,10 @@ async function validate(ctx, errorMessage, type) {
   if (ctx.message?.text === "/stop") return "STOP";
 
   // Проверка типа "photo"
-  if (type === "photo" && (!ctx.message?.photo || ctx.message.photo.length === 0)) {
+  if (
+    type === "photo" &&
+    (!ctx.message?.photo || ctx.message.photo.length === 0)
+  ) {
     const msg = await ctx.reply(errorMessage);
     ctx.wizard.state.sentMessages.push(msg.message_id);
     return false;

@@ -5,6 +5,7 @@ const { showMenu, handleEventCallback } = require("./helpers/menu");
 const startCommand = require("./commands/start");
 const eventsCommand = require("./commands/events");
 const galleryCommand = require("./commands/gallery");
+const teamCommand = require("./commands/team");
 
 const createEventScene = require("./scenes/events/createEventScene");
 const updateEventScene = require("./scenes/events/updateEventScene");
@@ -18,11 +19,15 @@ const addVideoScene = require("./scenes/video/addVideoScene");
 const updateVideoScene = require("./scenes/video/updateVideoScene");
 const deleteVideoScene = require("./scenes/video/deleteVideoScene");
 
+const addTeamScene = require("./scenes/teams/addTeamScene");
+const updateTeamScene = require("./scenes/teams/updateTeamScene");
+const deleteTeamScene = require("./scenes/teams/deleteTeamScene");
+
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 bot.use(session());
 
-const GLOBAL_COMMANDS = ["events", "gallery", "video"];
+const GLOBAL_COMMANDS = ["events", "gallery", "video", "team"];
 
 const ADMINS_ID = process.env.ADMINS_ID.split(",").map((id) => Number(id));
 
@@ -58,6 +63,8 @@ bot.use(async (ctx, next) => {
         return showMenu(ctx, 1);
       case "video":
         return showMenu(ctx, 2);
+      case "team":
+        return showMenu(ctx, 3);
     }
   }
 
@@ -74,17 +81,22 @@ const stage = new Scenes.Stage([
   addVideoScene,
   updateVideoScene,
   deleteVideoScene,
+  addTeamScene,
+  updateTeamScene,
+  deleteTeamScene,
 ]);
 
 stage.action(/create_event|update_event|delete_event/, handleEventCallback);
 stage.action(/add_photo|update_photo|delete_photo/, handleEventCallback);
 stage.action(/add_video|update_video|delete_video/, handleEventCallback);
+stage.action(/add_team|update_team|delete_team/, handleEventCallback);
 
 bot.use(stage.middleware());
 
 startCommand(bot);
 eventsCommand(bot);
 galleryCommand(bot);
+teamCommand(bot);
 
 bot.launch().then(() => console.log("Бот запущен"));
 

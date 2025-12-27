@@ -17,16 +17,26 @@ const MENU = {
     { text: "✏ Изменить", action: "update_video" },
     { text: "🗑 Удалить", action: "delete_video" },
   ],
+  3: [
+    { text: "➕ Добавить", action: "add_team" },
+    { text: "✏ Изменить", action: "update_team" },
+    { text: "🗑 Удалить", action: "delete_team" },
+  ],
 };
 
 function showMenu(ctx, index, text = "Выбери действие:") {
-  const buttons = MENU[index].map((item) => [
+  const menuItems = MENU[index];
+  if (!menuItems) {
+    return ctx.reply("❗ Меню для этого раздела не найдено");
+  }
+
+  const buttons = menuItems.map((item) => [
     Markup.button.callback(item.text, item.action),
   ]);
+
   return ctx.reply(text, Markup.inlineKeyboard(buttons));
 }
 
-// ОБРАБОТКА callback-КНОПОК ДЛЯ СЦЕН
 async function handleEventCallback(ctx) {
   try {
     await ctx.answerCbQuery();
@@ -59,6 +69,12 @@ async function handleEventCallback(ctx) {
       return ctx.scene.enter("update_video");
     case "delete_video":
       return ctx.scene.enter("delete_video");
+    case "add_team":
+      return ctx.scene.enter("add_team");
+    case "update_team":
+      return ctx.scene.enter("update_team");
+    case "delete_team":
+      return ctx.scene.enter("delete_team");
     default:
       return ctx.reply("❗ Неизвестная команда");
   }
