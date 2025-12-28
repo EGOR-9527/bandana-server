@@ -53,6 +53,7 @@ class UserController {
         instructors: t.instructors,
         achievements: t.achievements,
         description: t.description,
+        isRecruiting: t.isRecruiting,
         fileUrl: buildFileUrl(t.fileUrl),
       }));
       res.json({ success: true, data: result });

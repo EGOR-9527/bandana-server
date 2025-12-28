@@ -1,4 +1,3 @@
-// bot/scenes/deleteTeamScene.js
 const { Scenes, Markup } = require("telegraf");
 const Teams = require("../../../models/teams");
 const fs = require("fs");
@@ -7,7 +6,6 @@ const path = require("path");
 const deleteTeamScene = new Scenes.WizardScene(
   "delete_team",
 
-  // Шаг 0 — показываем первую команду
   async (ctx) => {
     const teams = await Teams.findAll();
 
@@ -27,12 +25,13 @@ const deleteTeamScene = new Scenes.WizardScene(
     return ctx.wizard.next();
   },
 
-  // Шаг 1 — ожидание действий (удаление, следующее, предыдущее)
   async (ctx) => {
     if (!ctx.callbackQuery) return;
 
     const action = ctx.callbackQuery.data;
-    try { await ctx.answerCbQuery(); } catch {}
+    try {
+      await ctx.answerCbQuery();
+    } catch {}
 
     const idx = ctx.wizard.state.currentIndex;
     const teams = ctx.wizard.state.teams;
@@ -40,16 +39,20 @@ const deleteTeamScene = new Scenes.WizardScene(
     if (action === "delete") {
       const team = teams[idx];
 
-      // удаляем фото
-      const filePath = path.resolve(__dirname, "../../../uploads", team.fileName);
+      const filePath = path.resolve(
+        __dirname,
+        "../../../uploads",
+        team.fileName
+      );
       if (fs.existsSync(filePath)) {
-        try { fs.unlinkSync(filePath); } catch {}
+        try {
+          fs.unlinkSync(filePath);
+        } catch {}
       }
 
       await team.destroy();
       await ctx.reply("🗑 Команда удалена!");
 
-      // удаляем команду из массива
       teams.splice(idx, 1);
 
       if (teams.length === 0) {
@@ -57,7 +60,6 @@ const deleteTeamScene = new Scenes.WizardScene(
         return ctx.scene.leave();
       }
 
-      // корректируем индекс
       ctx.wizard.state.currentIndex =
         idx >= teams.length ? teams.length - 1 : idx;
 
@@ -81,7 +83,6 @@ const deleteTeamScene = new Scenes.WizardScene(
   }
 );
 
-// Функция показа команды
 async function showTeamSlide(ctx) {
   const idx = ctx.wizard.state.currentIndex;
   const team = ctx.wizard.state.teams[idx];
@@ -100,6 +101,14 @@ async function showTeamSlide(ctx) {
   await clearCurrentMessage(ctx);
 
   let msg;
+  let textRecruiting = "";
+
+  if (team.isRecruiting) {
+    textRecruiting = "открыт";
+  } else {
+    textRecruiting = "закрыт";
+  }
+
   if (fs.existsSync(filePath)) {
     msg = await ctx.replyWithPhoto(
       { source: filePath },
@@ -110,7 +119,10 @@ async function showTeamSlide(ctx) {
           `🎂 Возраст: ${team.ageRange}\n` +
           `👨‍🏫 Преподаватели: ${team.instructors}\n` +
           `📝 Описание: ${team.description}\n` +
-          `🏆 Достижения:\n${team.achievements?.map(a => `• ${a}`).join("\n") || "—"}\n\n` +
+          `👥 Набор: ${textRecruiting}\n` +
+          `🏆 Достижения:\n${
+            team.achievements?.map((a) => `• ${a}`).join("\n") || "—"
+          }\n\n` +
           `${idx + 1}/${ctx.wizard.state.teams.length}`,
         ...keyboard,
       }
@@ -118,12 +130,15 @@ async function showTeamSlide(ctx) {
   } else {
     msg = await ctx.reply(
       `Фото недоступно на сервере\n🏷 Название: ${team.name}\n` +
-      `🏙 Город: ${team.city}\n` +
-      `🎂 Возраст: ${team.ageRange}\n` +
-      `👨‍🏫 Преподаватели: ${team.instructors}\n` +
-      `📝 Описание: ${team.description}\n` +
-      `🏆 Достижения:\n${team.achievements?.map(a => `• ${a}`).join("\n") || "—"}\n\n` +
-      `${idx + 1}/${ctx.wizard.state.teams.length}`,
+        `🏙 Город: ${team.city}\n` +
+        `🎂 Возраст: ${team.ageRange}\n` +
+        `👨‍🏫 Преподаватели: ${team.instructors}\n` +
+        `📝 Описание: ${team.description}\n` +
+        `👥 Набор: ${textRecruiting}\n` +
+        `🏆 Достижения:\n${
+          team.achievements?.map((a) => `• ${a}`).join("\n") || "—"
+        }\n\n` +
+        `${idx + 1}/${ctx.wizard.state.teams.length}`,
       keyboard
     );
   }
@@ -132,11 +147,12 @@ async function showTeamSlide(ctx) {
   ctx.wizard.state.sentMessages.push(msg.message_id);
 }
 
-// Очистка сообщений сцены
 async function clearCurrentMessage(ctx) {
   const ids = ctx.wizard.state.sentMessages || [];
   for (const id of ids) {
-    try { await ctx.deleteMessage(id); } catch {}
+    try {
+      await ctx.deleteMessage(id);
+    } catch {}
   }
   ctx.wizard.state.sentMessages = [];
 }

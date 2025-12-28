@@ -88,6 +88,7 @@ async function clearMessages(ctx) {
   ctx.wizard.state.data = {};
 }
 
+// bot/helpers/telegram.js
 async function showPreview(ctx, stepName, options = {}) {
   const { stepIndex = 0, titleFields = [], deleteOld = true } = options;
 
@@ -96,7 +97,22 @@ async function showPreview(ctx, stepName, options = {}) {
 
   for (const field of titleFields) {
     if (d[field.key]) {
-      text += `${field.icon || ""} ${field.label}: ${d[field.key]}\n`;
+      let value = d[field.key];
+
+      // Если это фото, показываем только иконку
+      if (field.key === "photoFileId") {
+        text += `${field.icon || ""} ${field.label}: ✅ загружено\n`;
+      } else {
+        // Форматируем значение если есть функция форматирования
+        if (field.format && typeof field.format === "function") {
+          value = field.format(value);
+        }
+
+        text += `${field.icon || ""} ${field.label}: ${value}\n`;
+      }
+    } else {
+      // Если поле не заполнено, показываем это
+      text += `${field.icon || ""} ${field.label}: ❌ не заполнено\n`;
     }
   }
 

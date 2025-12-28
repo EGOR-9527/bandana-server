@@ -8,7 +8,7 @@ const uploadDir = path.join(__dirname, "../../../uploads");
 
 function escapeMarkdown(text) {
   if (!text) return text;
-  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
+  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
 }
 
 const updateTeamScene = new Scenes.WizardScene(
@@ -42,14 +42,9 @@ const updateTeamScene = new Scenes.WizardScene(
     await ctx.answerCbQuery();
 
     if (data === "back" || data === "next") {
-      idx =
-        data === "back"
-          ? idx > 0
-            ? idx - 1
-            : teams.length - 1
-          : idx < teams.length - 1
-          ? idx + 1
-          : 0;
+      idx = data === "back"
+        ? (idx > 0 ? idx - 1 : teams.length - 1)
+        : (idx < teams.length - 1 ? idx + 1 : 0);
 
       ctx.wizard.state.currentIndex = idx;
       await clearCurrentMessage(ctx);
@@ -67,6 +62,7 @@ const updateTeamScene = new Scenes.WizardScene(
         [Markup.button.callback("Хореограф", "field_choreographer")],
         [Markup.button.callback("Достижения", "field_achievements")],
         [Markup.button.callback("Описание", "field_description")],
+        [Markup.button.callback("Статус набора", "field_isRecruiting")],
         [Markup.button.callback("Назад к просмотру", "back_to_slider")],
       ]);
 
@@ -77,6 +73,82 @@ const updateTeamScene = new Scenes.WizardScene(
     if (data === "back_to_slider") {
       await showTeamSlide(ctx);
       return;
+    }
+
+    if (data === "field_isRecruiting") {
+      ctx.wizard.state.fieldToEdit = "isRecruiting";
+      ctx.session.editTeamId = teams[idx].id;
+
+      const statusKeyboard = Markup.inlineKeyboard([
+        [
+          Markup.button.callback("✅ Открыть набор", "set_recruiting_true"),
+          Markup.button.callback("❌ Закрыть набор", "set_recruiting_false")
+        ],
+        [
+          Markup.button.callback("⬅️ Назад к редактированию", "back_to_edit")
+        ]
+      ]);
+
+      const team = teams[idx];
+      const currentStatus = team.isRecruiting ? "✅ Открыт для набора" : "❌ Набор закрыт";
+      
+      const text = `Текущий статус набора: ${currentStatus}\n\nВыберите новый статус:`;
+      
+      await ctx.editMessageCaption(text, {
+        ...statusKeyboard,
+        parse_mode: "HTML"
+      });
+      return;
+    }
+
+    if (data === "back_to_edit") {
+      const editKeyboard = Markup.inlineKeyboard([
+        [Markup.button.callback("Фото", "field_photo")],
+        [Markup.button.callback("Название", "field_name")],
+        [Markup.button.callback("Город", "field_city")],
+        [Markup.button.callback("Возраст", "field_ageRange")],
+        [Markup.button.callback("Преподаватели", "field_instructors")],
+        [Markup.button.callback("Хореограф", "field_choreographer")],
+        [Markup.button.callback("Достижения", "field_achievements")],
+        [Markup.button.callback("Описание", "field_description")],
+        [Markup.button.callback("Статус набора", "field_isRecruiting")],
+        [Markup.button.callback("Назад к просмотру", "back_to_slider")],
+      ]);
+
+      await ctx.editMessageReplyMarkup(editKeyboard.reply_markup);
+      return;
+    }
+
+    if (data === "set_recruiting_true" || data === "set_recruiting_false") {
+      const newStatus = data === "set_recruiting_true";
+      const teamId = ctx.session.editTeamId;
+
+      try {
+        await Teams.update(
+          { isRecruiting: newStatus },
+          { where: { id: teamId } }
+        );
+
+        const fresh = await Teams.findByPk(teamId);
+        if (fresh) {
+          const i = ctx.wizard.state.teams.findIndex(t => t.id === teamId);
+          if (i !== -1) ctx.wizard.state.teams[i] = fresh;
+        }
+
+        const statusText = newStatus ? "✅ Открыт для набора" : "❌ Набор закрыт";
+        await ctx.reply(`✅ Статус набора обновлен: ${statusText}`);
+
+        ctx.wizard.state.fieldToEdit = null;
+        delete ctx.session.editTeamId;
+        
+        await showTeamSlide(ctx);
+        return ctx.wizard.selectStep(1);
+
+      } catch (err) {
+        console.error("Ошибка обновления статуса набора:", err);
+        await ctx.reply("Произошла ошибка при сохранении статуса");
+        return;
+      }
     }
 
     if (data.startsWith("field_")) {
@@ -96,10 +168,9 @@ const updateTeamScene = new Scenes.WizardScene(
       };
       const fieldName = fieldNames[field] || field;
 
-      const text =
-        field === "photo"
-          ? "Пришли новое фото команды"
-          : `Напиши новое значение для ${fieldName}:`;
+      const text = field === "photo"
+        ? "Пришли новое фото команды"
+        : `Напиши новое значение для ${fieldName}:`;
 
       const msg = await ctx.reply(text);
       ctx.wizard.state.sentMessages.push(msg.message_id);
@@ -136,25 +207,19 @@ const updateTeamScene = new Scenes.WizardScene(
         }
 
         const fileUrl = `/uploads/${fileData.fileName}`;
-
-        newData = {
-          fileName: fileData.fileName,
+        
+        newData = { 
+          fileName: fileData.fileName, 
           photoFileId: photo.file_id,
-          fileUrl: fileUrl,
+          fileUrl: fileUrl
         };
         successMessage = "Фото успешно обновлено!";
       } else if (field === "achievements") {
         if (!ctx.message?.text?.trim()) {
-          await ctx.reply(
-            "Пожалуйста, пришли текст достижений через точку с запятой (;)"
-          );
+          await ctx.reply("Пожалуйста, пришли текст достижений через точку с запятой (;)");
           return;
         }
-        const achievements = ctx.message.text
-          .trim()
-          .split(";")
-          .map((a) => a.trim())
-          .filter((a) => a);
+        const achievements = ctx.message.text.trim().split(";").map(a => a.trim()).filter(a => a);
         newData = { achievements: achievements };
         successMessage = "Достижения обновлены!";
       } else {
@@ -164,7 +229,7 @@ const updateTeamScene = new Scenes.WizardScene(
         }
         const text = ctx.message.text.trim();
         newData = { [field]: text };
-
+        
         const fieldTitles = {
           name: "Название",
           city: "Город",
@@ -180,11 +245,12 @@ const updateTeamScene = new Scenes.WizardScene(
 
       const fresh = await Teams.findByPk(teamId);
       if (fresh) {
-        const i = ctx.wizard.state.teams.findIndex((t) => t.id === teamId);
+        const i = ctx.wizard.state.teams.findIndex(t => t.id === teamId);
         if (i !== -1) ctx.wizard.state.teams[i] = fresh;
       }
 
       await ctx.reply(`✅ ${successMessage}`);
+
     } catch (err) {
       console.error("Ошибка обновления команды:", err);
       await ctx.reply("Произошла ошибка при сохранении");
@@ -209,11 +275,15 @@ async function showTeamSlide(ctx) {
   const instructors = escapeMarkdown(team.instructors) || "_не указано_";
   const choreographer = escapeMarkdown(team.choreographer) || "_не указано_";
   const description = escapeMarkdown(team.description) || "_не указано_";
-
+  
+  const recruitingStatus = team.isRecruiting 
+    ? "✅ *Открыт для набора*" 
+    : "❌ *Набор закрыт*";
+  
   let achievementsText = "_не указано_";
   if (team.achievements?.length) {
-    const escapedAchievements = team.achievements.map((a) => escapeMarkdown(a));
-    achievementsText = escapedAchievements.map((a) => `• ${a}`).join("\n");
+    const escapedAchievements = team.achievements.map(a => escapeMarkdown(a));
+    achievementsText = escapedAchievements.map(a => `• ${a}`).join("\n");
   }
 
   const caption = `*Команда ${idx + 1} из ${total}*
@@ -223,6 +293,7 @@ async function showTeamSlide(ctx) {
 🎂 *Возраст:* ${ageRange}
 👨‍🏫 *Преподаватели:* ${instructors}
 💃 *Хореограф:* ${choreographer}
+👥 *Статус набора:* ${recruitingStatus}
 
 📝 *Описание:*
 ${description}
@@ -248,18 +319,12 @@ ${achievementsText}`;
         parse_mode: "Markdown",
         ...keyboard,
       });
-    } else if (
-      team.fileName &&
-      fs.existsSync(path.join(uploadDir, team.fileName))
-    ) {
-      msg = await ctx.replyWithPhoto(
-        { source: path.join(uploadDir, team.fileName) },
-        {
-          caption,
-          parse_mode: "Markdown",
-          ...keyboard,
-        }
-      );
+    } else if (team.fileName && fs.existsSync(path.join(uploadDir, team.fileName))) {
+      msg = await ctx.replyWithPhoto({ source: path.join(uploadDir, team.fileName) }, {
+        caption,
+        parse_mode: "Markdown",
+        ...keyboard,
+      });
     } else {
       msg = await ctx.reply(caption + "\n\n📷 Фото недоступно", {
         parse_mode: "Markdown",
@@ -275,31 +340,26 @@ ${achievementsText}`;
 Возраст: ${team.ageRange || "не указано"}
 Преподаватели: ${team.instructors || "не указано"}
 Хореограф: ${team.choreographer || "не указано"}
+Статус набора: ${team.isRecruiting ? "✅ Открыт для набора" : "❌ Набор закрыт"}
 
 Описание: ${team.description || "не указано"}
 
 Достижения: ${
-      team.achievements?.length
-        ? team.achievements.map((a) => `• ${a}`).join("\n")
-        : "не указано"
-    }`;
+  team.achievements?.length 
+    ? team.achievements.map(a => `• ${a}`).join("\n")
+    : "не указано"
+}`;
 
     if (team.photoFileId) {
       msg = await ctx.replyWithPhoto(team.photoFileId, {
         caption: simpleCaption,
         ...keyboard,
       });
-    } else if (
-      team.fileName &&
-      fs.existsSync(path.join(uploadDir, team.fileName))
-    ) {
-      msg = await ctx.replyWithPhoto(
-        { source: path.join(uploadDir, team.fileName) },
-        {
-          caption: simpleCaption,
-          ...keyboard,
-        }
-      );
+    } else if (team.fileName && fs.existsSync(path.join(uploadDir, team.fileName))) {
+      msg = await ctx.replyWithPhoto({ source: path.join(uploadDir, team.fileName) }, {
+        caption: simpleCaption,
+        ...keyboard,
+      });
     } else {
       msg = await ctx.reply(simpleCaption + "\n\nФото недоступно", {
         ...keyboard,
@@ -313,9 +373,7 @@ ${achievementsText}`;
 
 async function clearCurrentMessage(ctx) {
   for (const id of ctx.wizard.state.sentMessages || []) {
-    try {
-      await ctx.deleteMessage(id);
-    } catch {}
+    try { await ctx.deleteMessage(id); } catch {}
   }
   ctx.wizard.state.sentMessages = [];
 }

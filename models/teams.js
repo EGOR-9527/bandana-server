@@ -45,6 +45,11 @@ const Teams = sequelize.define("Teams", {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  isRecruiting: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
   fileUrl: {
     type: DataTypes.STRING,
     allowNull: true,
