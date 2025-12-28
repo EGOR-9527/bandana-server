@@ -17,15 +17,15 @@ const Teams = sequelize.define("Teams", {
     allowNull: false,
   },
   ageRange: {
-    type: DataTypes.STRING,
+    type: DataTypes.TEXT,
     allowNull: true,
   },
   instructors: {
-    type: DataTypes.STRING,
+    type: DataTypes.TEXT,
     allowNull: true,
   },
   choreographer: {
-    type: DataTypes.STRING,
+    type: DataTypes.TEXT,
     allowNull: true,
   },
   achievements: {
@@ -34,15 +34,15 @@ const Teams = sequelize.define("Teams", {
     defaultValue: [],
   },
   photoFileId: {
-    type: DataTypes.STRING,
+    type: DataTypes.TEXT,
     allowNull: true,
   },
   fileName: {
-    type: DataTypes.STRING,
+    type: DataTypes.TEXT,
     allowNull: true,
   },
   description: {
-    type: DataTypes.STRING,
+    type: DataTypes.TEXT,
     allowNull: true,
   },
   isRecruiting: {
@@ -51,7 +51,7 @@ const Teams = sequelize.define("Teams", {
     defaultValue: false,
   },
   fileUrl: {
-    type: DataTypes.STRING,
+    type: DataTypes.TEXT,
     allowNull: true,
   },
 });
