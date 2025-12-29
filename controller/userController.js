@@ -3,7 +3,7 @@ const bot = require("../bot/bot");
 const Events = require("../models/events");
 const Gallery = require("../models/gallery");
 const Video = require("../models/video");
-const Teams = require("../models/teams")
+const Teams = require("../models/teams");
 
 const BASE_URL = "https://bandana-dance.ru";
 
@@ -44,7 +44,7 @@ class UserController {
   async getTeams(req, res) {
     try {
       const teams = await Teams.findAll();
-      console.log(teams)
+      console.log(teams);
       const result = teams.map((t) => ({
         id: t.id,
         name: t.name,
@@ -87,12 +87,25 @@ class UserController {
 
   async getGallery(req, res) {
     try {
-      const images = await Gallery.findAll();
+      const page = Number(req.query.page) || 1;
+      const limit = Number(req.query.limit) || 12;
+      const offset = (page - 1) * limit;
+
+      const { rows: images, count } = await Gallery.findAndCountAll({
+        limit,
+        offset,
+      });
+
       const result = images.map((img) => ({
         ...img.toJSON(),
         fileUrl: buildFileUrl(img.fileUrl),
       }));
-      res.json({ success: true, data: result });
+
+      res.json({
+        success: true,
+        data: result,
+        hasMore: offset + images.length < count,
+      });
     } catch (err) {
       console.error("Ошибка getGallery:", err);
       res.status(500).json({ success: false, message: "Ошибка сервера" });
