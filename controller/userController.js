@@ -87,12 +87,16 @@ class UserController {
 
   async getGallery(req, res) {
     try {
+      const result = await Gallery.findAll();
 
-      const result = await Gallery.findAndCountAll()
+      const processedResult = result.map((item) => ({
+        ...item.toJSON(),
+        fileUrl: buildFileUrl(item.fileUrl),
+      }));
 
       res.json({
         success: true,
-        data: result,
+        data: processedResult,
       });
     } catch (err) {
       console.error("Ошибка getGallery:", err);
