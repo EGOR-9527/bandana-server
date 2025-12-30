@@ -87,24 +87,12 @@ class UserController {
 
   async getGallery(req, res) {
     try {
-      const page = Number(req.query.page) || 1;
-      const limit = Number(req.query.limit) || 12;
-      const offset = (page - 1) * limit;
 
-      const { rows: images, count } = await Gallery.findAndCountAll({
-        limit,
-        offset,
-      });
-
-      const result = images.map((img) => ({
-        ...img.toJSON(),
-        fileUrl: buildFileUrl(img.fileUrl),
-      }));
+      const result = await Gallery.findAndCountAll()
 
       res.json({
         success: true,
         data: result,
-        hasMore: offset + images.length < count,
       });
     } catch (err) {
       console.error("Ошибка getGallery:", err);
