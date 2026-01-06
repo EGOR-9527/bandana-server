@@ -20,7 +20,7 @@ app.set("trust proxy", true);
 CORS
 ============================================================ */
 
-const IS_TEST = process.env.TEST === "true";
+const IS_TEST = process.env.TEST === "false";
 
 const ALLOWED_ORIGINS = IS_TEST
   ? [
