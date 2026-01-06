@@ -6,7 +6,7 @@ const Gallery = require("../models/gallery");
 const Video = require("../models/video");
 const Teams = require("../models/teams");
 
-const BASE_URL = process.env.TEST ? "http://localhost:5000" : "https://bandana-dance.ru";
+const BASE_URL = process.env.TEST ? "https://bandana-dance.ru" : "http://localhost:5000";
 
 const getCleanFilename = (fileUrl) => {
   if (!fileUrl) return "";

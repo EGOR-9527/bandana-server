@@ -16,8 +16,8 @@ CORS
 ============================================================ */
 
 const ALLOWED_ORIGINS = process.env.TEST
-  ? "http://localhost:3000"
-  : "https://bandana-dance.ru";
+  ? "https://bandana-dance.ru"
+  : "http://localhost:3000";
 
 app.use(
   cors({
