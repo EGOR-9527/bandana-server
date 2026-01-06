@@ -17,19 +17,9 @@ CORS
 
 const IS_TEST = process.env.TEST === "false";
 
-const ALLOWED_ORIGINS = "https://bandana-dance.ru";
-
 app.use(
   cors({
-    origin: function (origin, callback) {
-      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
-        callback(null, true);
-      } else {
-        console.warn("Blocked CORS for origin:", origin);
-        callback(new Error("CORS blocked"));
-      }
-    },
-    credentials: true,
+    origin: "https://bandana-dance.ru",
   })
 );
 
