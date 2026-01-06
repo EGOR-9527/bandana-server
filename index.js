@@ -21,28 +21,8 @@ const ALLOWED_ORIGINS = process.env.TEST
 
 app.use(
   cors({
-    origin: (origin, callback) => {
-      if (!origin) {
-        return callback(null, true);
-      }
-      
-      if (ALLOWED_ORIGINS.some(allowed => origin === allowed)) {
-        return callback(null, true);
-      }
-      
-      const originHostname = new URL(origin).hostname;
-      const allowedHostnames = ALLOWED_ORIGINS.map(url => new URL(url).hostname);
-      
-      if (allowedHostnames.includes(originHostname)) {
-        return callback(null, true);
-      }
-      
-      console.warn(`CORS blocked: ${origin}`);
-      return callback(new Error('Not allowed by CORS'), false);
-    },
+    origin: ALLOWED_ORIGINS,
     credentials: true,
-    exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    maxAge: 86400,
   })
 );
 
