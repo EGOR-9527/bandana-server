@@ -174,7 +174,7 @@ async function start() {
     await sequelize.sync();
     console.log("✅ PostgreSQL connected");
 
-    await initRedis();
+    /*await initRedis();*/
 
     try {
       bot.launch();
