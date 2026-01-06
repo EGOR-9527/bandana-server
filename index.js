@@ -17,13 +17,7 @@ CORS
 
 const IS_TEST = process.env.TEST === "false";
 
-const ALLOWED_ORIGINS = IS_TEST
-  ? [
-      "http://localhost:3000",
-      "https://bandana-dance.ru",
-      "https://www.bandana-dance.ru",
-    ]
-  : ["https://bandana-dance.ru", "https://www.bandana-dance.ru"];
+const ALLOWED_ORIGINS = "https://bandana-dance.ru";
 
 app.use(
   cors({
