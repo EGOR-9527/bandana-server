@@ -40,7 +40,7 @@ app.use(
 Express middleware
 ============================================================ */
 
-app.use(express.json({ limit: "20mb" }));
+app.use(express.json({ limit: "2000mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 /* ============================================================
