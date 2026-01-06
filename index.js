@@ -15,12 +15,42 @@ const PORT = Number(process.env.PORT) || 5000;
 CORS
 ============================================================ */
 
-const ALLOWED_ORIGINS = "https://bandana-dance.ru"
+const ALLOWED_ORIGINS = [
+  "https://bandana-dance.ru",
+  "https://www.bandana-dance.ru",
+];
 
 app.use(
   cors({
-    origin: ALLOWED_ORIGINS,
+    origin: (origin, callback) => {
+      if (!origin) {
+        console.log("Запрос без Origin, разрешаем");
+        return callback(null, true);
+      }
+
+      if (ALLOWED_ORIGINS.includes(origin)) {
+        console.log(`Origin разрешен: ${origin}`);
+        return callback(null, true);
+      }
+
+      try {
+        const originHostname = new URL(origin).hostname;
+        const allowedHostnames = ALLOWED_ORIGINS.map(
+          (url) => new URL(url).hostname
+        );
+
+        if (allowedHostnames.includes(originHostname)) {
+          console.log(`Hostname разрешен: ${originHostname}`);
+          return callback(null, true);
+        }
+      } catch (e) {}
+
+      console.warn(`CORS заблокирован: ${origin}`);
+      return callback(new Error("Not allowed by CORS"), false);
+    },
     credentials: true,
+    exposedHeaders: ["Content-Range", "X-Content-Range"],
+    maxAge: 86400,
   })
 );
 
@@ -31,6 +61,13 @@ Express middleware
 app.use(express.json({ limit: "20mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
+  console.log("Origin:", req.headers.origin);
+  console.log("User-Agent:", req.headers["user-agent"]);
+  console.log("---");
+  next();
+});
 /* ============================================================
 Redis (опционально)
 ============================================================ */
