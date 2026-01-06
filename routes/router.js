@@ -10,4 +10,13 @@ router.get("/teams", UserController.getTeams);
 
 router.post("/contact", UserController.postContactForm);
 
+router.get("/test", (req, res) => {
+  res.json({
+    success: true,
+    message: "API работает",
+    timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV || "development",
+  });
+});
+
 module.exports = router;
