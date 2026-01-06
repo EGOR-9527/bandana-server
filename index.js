@@ -12,6 +12,11 @@ const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 
 /* ============================================================
+TRUST PROXY (ОБЯЗАТЕЛЬНО ДЛЯ MOB / CLOUDFLARE / NGINX)
+============================================================ */
+app.set("trust proxy", true);
+
+/* ============================================================
 CORS
 ============================================================ */
 
@@ -30,41 +35,38 @@ app.use(
       if (ALLOWED_ORIGINS.includes(origin)) {
         return callback(null, true);
       }
-      return callback(null, false);
+      return callback(new Error("CORS blocked"), false);
     },
     credentials: true,
   })
 );
 
 /* ============================================================
-Express middleware
+MIDDLEWARE
 ============================================================ */
 
-app.use(express.json({ limit: "2000mb" }));
+app.use(express.json({ limit: "50mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 /* ============================================================
-Redis (опционально)
+REDIS (OPTIONAL)
 ============================================================ */
 
 let redisClient = null;
 let redis;
 
-const USE_REDIS = process.env.USE_REDIS !== "false"; // можно отключить через .env
+const USE_REDIS = process.env.USE_REDIS !== "false";
 
 if (USE_REDIS) {
   try {
     redis = require("redis");
-  } catch (err) {
-    console.warn("⚠️ Пакет 'redis' не установлен, Redis отключён");
+  } catch {
+    console.warn("⚠️ Redis package not installed");
   }
 }
 
 async function initRedis() {
-  if (!USE_REDIS || !redis) {
-    console.log("⚠️ Redis отключён (тестовый режим)");
-    return;
-  }
+  if (!USE_REDIS || !redis) return;
 
   try {
     redisClient = redis.createClient({
@@ -79,34 +81,60 @@ async function initRedis() {
     });
 
     await redisClient.connect();
-    console.log("✅ Redis подключён");
+    console.log("✅ Redis connected");
   } catch (err) {
-    console.warn("⚠️ Redis недоступен, rate-limit отключён");
+    console.warn("⚠️ Redis unavailable, rate-limit disabled");
     redisClient = null;
   }
 }
 
 /* ============================================================
-Rate limit (НЕ ЛОМАЕТ СЕРВЕР)
+UTILS
 ============================================================ */
 
-const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX) || 200;
+const getClientIp = (req) => {
+  const cfIp = req.headers["cf-connecting-ip"];
+  if (cfIp) return cfIp;
+
+  const xff = req.headers["x-forwarded-for"];
+  if (xff) return xff.split(",")[0].trim();
+
+  return req.socket.remoteAddress || "unknown";
+};
+
+/* ============================================================
+RATE LIMIT (SAFE FOR MOBILE)
+============================================================ */
+
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX) || 1000;
 const RATE_LIMIT_WINDOW = Number(process.env.RATE_LIMIT_WINDOW_MS) || 60000;
-const SLOW_AFTER = Number(process.env.SLOW_DOWN_AFTER) || 100;
-const SLOW_DELAY = Number(process.env.SLOW_DOWN_DELAY_MS) || 50;
+const SLOW_AFTER = Number(process.env.SLOW_DOWN_AFTER) || 300;
+const SLOW_DELAY = Number(process.env.SLOW_DOWN_DELAY_MS) || 20;
+
+// публичные пути — НЕ ЛИМИТИМ
+const SKIP_RATE_LIMIT_PATHS = [
+  "/uploads",
+  "/api/gallery",
+  "/api/video",
+  "/api/events",
+  "/api/teams",
+];
 
 app.use(async (req, res, next) => {
-  if (!USE_REDIS || !redisClient || !redisClient.isOpen) {
-    return next();
-  }
-
   try {
-    const ip =
-      req.headers["cf-connecting-ip"] ||
-      req.headers["x-forwarded-for"] ||
-      req.socket.remoteAddress;
+    if (
+      SKIP_RATE_LIMIT_PATHS.some((p) => req.path.startsWith(p))
+    ) {
+      return next();
+    }
 
+    if (!USE_REDIS || !redisClient || !redisClient.isOpen) {
+      return next();
+    }
+
+    const ip = getClientIp(req);
     const key = `ratelimit:${ip}`;
+
     const requests = await redisClient.incr(key);
 
     if (requests === 1) {
@@ -116,9 +144,7 @@ app.use(async (req, res, next) => {
     if (requests > RATE_LIMIT_MAX) {
       return res.status(429).json({
         success: false,
-        message:
-          process.env.RATE_LIMIT_MESSAGE ||
-          "Слишком много запросов, попробуйте позже",
+        message: "Слишком много запросов, попробуйте позже",
       });
     }
 
@@ -135,19 +161,19 @@ app.use(async (req, res, next) => {
 });
 
 /* ============================================================
-Routes
+ROUTES
 ============================================================ */
 
 app.use("/api", photosRouter);
 
 /* ============================================================
-Start server
+START SERVER
 ============================================================ */
 
 async function start() {
   try {
     await sequelize.authenticate();
-    console.log("✅ PostgreSQL подключена");
+    console.log("✅ PostgreSQL connected");
 
     await sequelize.sync();
 
@@ -155,16 +181,16 @@ async function start() {
 
     try {
       bot.start();
-      console.log("✅ Telegram-бот запущен");
+      console.log("✅ Telegram bot started");
     } catch (e) {
-      console.error("⚠️ Ошибка Telegram-бота:", e.message);
+      console.warn("⚠️ Telegram bot error:", e.message);
     }
 
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(`🚀 Сервер запущен на порту ${PORT}`);
+      console.log(`🚀 Server running on port ${PORT}`);
     });
   } catch (err) {
-    console.error("❌ Критическая ошибка запуска:", err);
+    console.error("❌ Critical startup error:", err);
     process.exit(1);
   }
 }
