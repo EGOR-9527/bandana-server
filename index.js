@@ -15,9 +15,7 @@ const PORT = Number(process.env.PORT) || 5000;
 CORS
 ============================================================ */
 
-const ALLOWED_ORIGINS = process.env.TEST
-  ? "https://bandana-dance.ru"
-  : "http://localhost:3000";
+const ALLOWED_ORIGINS = "https://bandana-dance.ru"
 
 app.use(
   cors({
