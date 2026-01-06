@@ -12,11 +12,6 @@ const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 
 /* ============================================================
-TRUST PROXY
-============================================================ */
-app.set("trust proxy", true);
-
-/* ============================================================
 CORS
 ============================================================ */
 
@@ -32,12 +27,13 @@ const ALLOWED_ORIGINS = IS_TEST
 
 app.use(
   cors({
-    origin(origin, callback) {
-      if (!origin) return callback(null, true);
-      if (ALLOWED_ORIGINS.includes(origin)) {
-        return callback(null, true);
+    origin: function (origin, callback) {
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn("Blocked CORS for origin:", origin);
+        callback(new Error("CORS blocked"));
       }
-      return callback(new Error("CORS blocked"), false);
     },
     credentials: true,
   })
