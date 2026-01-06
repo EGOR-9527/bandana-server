@@ -1,3 +1,4 @@
+require("dotenv").config();
 const path = require("path");
 const bot = require("../bot/bot");
 const Events = require("../models/events");
@@ -5,7 +6,7 @@ const Gallery = require("../models/gallery");
 const Video = require("../models/video");
 const Teams = require("../models/teams");
 
-const BASE_URL = "https://bandana-dance.ru";
+const BASE_URL = process.env.TEST ? "http://localhost:5000" : "https://bandana-dance.ru";
 
 const getCleanFilename = (fileUrl) => {
   if (!fileUrl) return "";

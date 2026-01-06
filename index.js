@@ -15,21 +15,34 @@ const PORT = Number(process.env.PORT) || 5000;
 CORS
 ============================================================ */
 
-const ALLOWED_ORIGINS = [
-  "https://bandana-dance.ru",
-  "https://www.bandana-dance.ru",
-];
+const ALLOWED_ORIGINS = process.env.TEST
+  ? ["http://localhost:3000"]
+  : ["https://bandana-dance.ru", "https://www.bandana-dance.ru"];
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (ALLOWED_ORIGINS.includes(origin)) {
+      if (!origin) {
         return callback(null, true);
       }
-      return callback(null, false);
+      
+      if (ALLOWED_ORIGINS.some(allowed => origin === allowed)) {
+        return callback(null, true);
+      }
+      
+      const originHostname = new URL(origin).hostname;
+      const allowedHostnames = ALLOWED_ORIGINS.map(url => new URL(url).hostname);
+      
+      if (allowedHostnames.includes(originHostname)) {
+        return callback(null, true);
+      }
+      
+      console.warn(`CORS blocked: ${origin}`);
+      return callback(new Error('Not allowed by CORS'), false);
     },
-    credentials: true
+    credentials: true,
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    maxAge: 86400,
   })
 );
 
