@@ -3,7 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const { bot, notifyAdmins } = require("./bot/bot");
+const bot = require("./bot/bot");
 
 const sequelize = require("./config/db");
 const photosRouter = require("./routes/router");
@@ -147,24 +147,6 @@ app.use("/api", photosRouter);
 /* ============================================================
 START
 ============================================================ */
-
-process.on("uncaughtException", async (err) => {
-  console.error("❌ Необработанное исключение:", err);
-
-  await notifyAdmins(`⚠️ Необработанное исключение:\n${err.stack || err}`);
-
-  process.exit(1);
-});
-
-process.on("unhandledRejection", async (reason, promise) => {
-  console.error("❌ Необработанное отклонение промиса:", reason);
-
-  await notifyAdmins(
-    `⚠️ Необработанное отклонение промиса:\n${reason.stack || reason}`
-  );
-
-  process.exit(1);
-});
 
 async function start() {
   try {
