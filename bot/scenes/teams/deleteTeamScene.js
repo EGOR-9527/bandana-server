@@ -102,6 +102,29 @@ async function showTeamSlide(ctx) {
 
   let msg;
   let textRecruiting = "";
+  const MAX_CAPTION_LENGTH = 1024;
+
+  const achievementsText = ctx.wizard.state.data.achievements
+    .map((a) => `• ${a}`)
+    .join("\n");
+
+  let caption =
+    `✅ Команда создана!\n\n` +
+    `🏷 Название: ${ctx.wizard.state.data.name}\n` +
+    `🏙 Город: ${ctx.wizard.state.data.city}\n` +
+    `🎂 Возраст: ${ctx.wizard.state.data.ageRange}\n` +
+    `👨‍🏫 Преподаватели: ${ctx.wizard.state.data.instructors}\n` +
+    `🏆 Достижения:\n${achievementsText}\n` +
+    `📝 Описание: ${ctx.wizard.state.data.description}\n` +
+    `👥 ${
+      ctx.wizard.state.data.isRecruiting
+        ? "✅ Открыт для набора"
+        : "❌ Набор закрыт"
+    }`;
+
+  if (caption.length > MAX_CAPTION_LENGTH) {
+    caption = caption.slice(0, MAX_CAPTION_LENGTH - 3) + "...";
+  }
 
   if (team.isRecruiting) {
     textRecruiting = "открыт";
@@ -110,37 +133,9 @@ async function showTeamSlide(ctx) {
   }
 
   if (fs.existsSync(filePath)) {
-    msg = await ctx.replyWithPhoto(
-      { source: filePath },
-      {
-        caption:
-          `🏷 Название: ${team.name}\n` +
-          `🏙 Город: ${team.city}\n` +
-          `🎂 Возраст: ${team.ageRange}\n` +
-          `👨‍🏫 Преподаватели: ${team.instructors}\n` +
-          `📝 Описание: ${team.description}\n` +
-          `👥 Набор: ${textRecruiting}\n` +
-          `🏆 Достижения:\n${
-            team.achievements?.map((a) => `• ${a}`).join("\n") || "—"
-          }\n\n` +
-          `${idx + 1}/${ctx.wizard.state.teams.length}`,
-        ...keyboard,
-      }
-    );
-  } else {
-    msg = await ctx.reply(
-      `Фото недоступно на сервере\n🏷 Название: ${team.name}\n` +
-        `🏙 Город: ${team.city}\n` +
-        `🎂 Возраст: ${team.ageRange}\n` +
-        `👨‍🏫 Преподаватели: ${team.instructors}\n` +
-        `📝 Описание: ${team.description}\n` +
-        `👥 Набор: ${textRecruiting}\n` +
-        `🏆 Достижения:\n${
-          team.achievements?.map((a) => `• ${a}`).join("\n") || "—"
-        }\n\n` +
-        `${idx + 1}/${ctx.wizard.state.teams.length}`,
-      keyboard
-    );
+    msg = await ctx.replyWithPhoto(ctx.wizard.state.data.photoFileId, {
+      caption,
+    });
   }
 
   ctx.wizard.state.currentMessageId = msg.message_id;
