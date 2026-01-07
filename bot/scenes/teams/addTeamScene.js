@@ -27,12 +27,18 @@ const createTeamScene = new Scenes.WizardScene(
   async (ctx) => {
     if (ctx.callbackQuery) {
       const action = ctx.callbackQuery.data;
-      try { await ctx.answerCbQuery(); } catch {}
+      try {
+        await ctx.answerCbQuery();
+      } catch {}
 
       if (action === "next") {
         if (!ctx.wizard.state.data.photoFileId) {
           const msg = await ctx.reply("Сначала отправь фото!");
-          setTimeout(async () => { try { await ctx.deleteMessage(msg.message_id); } catch {} }, 1500);
+          setTimeout(async () => {
+            try {
+              await ctx.deleteMessage(msg.message_id);
+            } catch {}
+          }, 1500);
           return;
         }
         return ctx.wizard.next();
@@ -60,12 +66,18 @@ const createTeamScene = new Scenes.WizardScene(
   async (ctx) => {
     if (ctx.callbackQuery) {
       const action = ctx.callbackQuery.data;
-      try { await ctx.answerCbQuery(); } catch {}
+      try {
+        await ctx.answerCbQuery();
+      } catch {}
 
       if (action === "next") {
         if (!ctx.wizard.state.data.name) {
           const msg = await ctx.reply("Сначала введи название команды!");
-          setTimeout(async () => { try { await ctx.deleteMessage(msg.message_id); } catch {} }, 1500);
+          setTimeout(async () => {
+            try {
+              await ctx.deleteMessage(msg.message_id);
+            } catch {}
+          }, 1500);
           return;
         }
         await deleteOne(ctx);
@@ -98,12 +110,18 @@ const createTeamScene = new Scenes.WizardScene(
   async (ctx) => {
     if (ctx.callbackQuery) {
       const action = ctx.callbackQuery.data;
-      try { await ctx.answerCbQuery(); } catch {}
+      try {
+        await ctx.answerCbQuery();
+      } catch {}
 
       if (action === "next") {
         if (!ctx.wizard.state.data.city) {
           const msg = await ctx.reply("Сначала введи город команды!");
-          setTimeout(async () => { try { await ctx.deleteMessage(msg.message_id); } catch {} }, 1500);
+          setTimeout(async () => {
+            try {
+              await ctx.deleteMessage(msg.message_id);
+            } catch {}
+          }, 1500);
           return;
         }
         await deleteOne(ctx);
@@ -136,12 +154,18 @@ const createTeamScene = new Scenes.WizardScene(
   async (ctx) => {
     if (ctx.callbackQuery) {
       const action = ctx.callbackQuery.data;
-      try { await ctx.answerCbQuery(); } catch {}
+      try {
+        await ctx.answerCbQuery();
+      } catch {}
 
       if (action === "next") {
         if (!ctx.wizard.state.data.ageRange) {
           const msg = await ctx.reply("Сначала укажи возраст участников!");
-          setTimeout(async () => { try { await ctx.deleteMessage(msg.message_id); } catch {} }, 1500);
+          setTimeout(async () => {
+            try {
+              await ctx.deleteMessage(msg.message_id);
+            } catch {}
+          }, 1500);
           return;
         }
         await deleteOne(ctx);
@@ -174,16 +198,26 @@ const createTeamScene = new Scenes.WizardScene(
   async (ctx) => {
     if (ctx.callbackQuery) {
       const action = ctx.callbackQuery.data;
-      try { await ctx.answerCbQuery(); } catch {}
+      try {
+        await ctx.answerCbQuery();
+      } catch {}
 
       if (action === "next") {
         if (!ctx.wizard.state.data.instructors) {
-          const msg = await ctx.reply("Сначала укажи преподавателей и хореографа!");
-          setTimeout(async () => { try { await ctx.deleteMessage(msg.message_id); } catch {} }, 1500);
+          const msg = await ctx.reply(
+            "Сначала укажи преподавателей и хореографа!"
+          );
+          setTimeout(async () => {
+            try {
+              await ctx.deleteMessage(msg.message_id);
+            } catch {}
+          }, 1500);
           return;
         }
         await deleteOne(ctx);
-        await showPreview(ctx, "достижения команды (через ;)", { stepIndex: 5 });
+        await showPreview(ctx, "достижения команды (через ;)", {
+          stepIndex: 5,
+        });
         return ctx.wizard.next();
       }
 
@@ -199,7 +233,11 @@ const createTeamScene = new Scenes.WizardScene(
       }
     }
 
-    const valid = await validate(ctx, "Укажи преподавателей и хореографа!", "text");
+    const valid = await validate(
+      ctx,
+      "Укажи преподавателей и хореографа!",
+      "text"
+    );
     if (!valid) return;
 
     ctx.wizard.state.data.instructors = ctx.message?.text?.trim();
@@ -212,12 +250,18 @@ const createTeamScene = new Scenes.WizardScene(
   async (ctx) => {
     if (ctx.callbackQuery) {
       const action = ctx.callbackQuery.data;
-      try { await ctx.answerCbQuery(); } catch {}
+      try {
+        await ctx.answerCbQuery();
+      } catch {}
 
       if (action === "next") {
         if (!ctx.wizard.state.data.achievements) {
           const msg = await ctx.reply("Сначала укажи достижения команды!");
-          setTimeout(async () => { try { await ctx.deleteMessage(msg.message_id); } catch {} }, 1500);
+          setTimeout(async () => {
+            try {
+              await ctx.deleteMessage(msg.message_id);
+            } catch {}
+          }, 1500);
           return;
         }
         await deleteOne(ctx);
@@ -241,7 +285,7 @@ const createTeamScene = new Scenes.WizardScene(
     if (!valid) return;
 
     ctx.wizard.state.data.achievements = ctx.message?.text
-      ? ctx.message.text.split(";").map(a => a.trim())
+      ? ctx.message.text.split(";").map((a) => a.trim())
       : [];
 
     await deleteOne(ctx);
@@ -253,12 +297,18 @@ const createTeamScene = new Scenes.WizardScene(
   async (ctx) => {
     if (ctx.callbackQuery) {
       const action = ctx.callbackQuery.data;
-      try { await ctx.answerCbQuery(); } catch {}
+      try {
+        await ctx.answerCbQuery();
+      } catch {}
 
       if (action === "next") {
         if (!ctx.wizard.state.data.description) {
           const msg = await ctx.reply("Сначала напиши описание команды!");
-          setTimeout(async () => { try { await ctx.deleteMessage(msg.message_id); } catch {} }, 1500);
+          setTimeout(async () => {
+            try {
+              await ctx.deleteMessage(msg.message_id);
+            } catch {}
+          }, 1500);
           return;
         }
         await deleteOne(ctx);
@@ -268,7 +318,9 @@ const createTeamScene = new Scenes.WizardScene(
 
       if (action === "back") {
         await deleteOne(ctx);
-        await showPreview(ctx, "достижения команды (через ;)", { stepIndex: 5 });
+        await showPreview(ctx, "достижения команды (через ;)", {
+          stepIndex: 5,
+        });
         return ctx.wizard.back();
       }
 
@@ -291,7 +343,9 @@ const createTeamScene = new Scenes.WizardScene(
   async (ctx) => {
     if (ctx.callbackQuery) {
       const action = ctx.callbackQuery.data;
-      try { await ctx.answerCbQuery(); } catch {}
+      try {
+        await ctx.answerCbQuery();
+      } catch {}
 
       if (action === "back") {
         await deleteOne(ctx);
@@ -338,19 +392,28 @@ const createTeamScene = new Scenes.WizardScene(
 
 async function showRecruitingQuestion(ctx) {
   const d = ctx.wizard.state.data || {};
-  let text = `📋 Предпросмотр:\n\n` +
-             `Шаг: набор в команду\n` +
-             `❓ Команда открыта для набора новых участников?`;
+  let text =
+    `📋 Предпросмотр:\n\n` +
+    `Шаг: набор в команду\n` +
+    `❓ Команда открыта для набора новых участников?`;
 
   const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback("✅ Да", "recruit_yes"), Markup.button.callback("❌ Нет", "recruit_no")],
-    [Markup.button.callback("⬅️ Назад", "back"), Markup.button.callback("⛔ Отменить", "stop")]
+    [
+      Markup.button.callback("✅ Да", "recruit_yes"),
+      Markup.button.callback("❌ Нет", "recruit_no"),
+    ],
+    [
+      Markup.button.callback("⬅️ Назад", "back"),
+      Markup.button.callback("⛔ Отменить", "stop"),
+    ],
   ]);
 
   // Удаляем старое сообщение
   const prevMsgId = ctx.wizard.state.sentMessages[7];
   if (prevMsgId) {
-    try { await ctx.deleteMessage(prevMsgId); } catch {}
+    try {
+      await ctx.deleteMessage(prevMsgId);
+    } catch {}
   }
 
   const msg = d.photoFileId
@@ -369,19 +432,35 @@ async function saveAndFinish(ctx) {
 
     await Teams.create(ctx.wizard.state.data);
 
-    const recruitingStatus = ctx.wizard.state.data.isRecruiting ? "✅ Открыт для набора" : "❌ Набор закрыт";
+    const recruitingStatus = ctx.wizard.state.data.isRecruiting
+      ? "✅ Открыт для набора"
+      : "❌ Набор закрыт";
 
-    await ctx.replyWithPhoto(ctx.wizard.state.data.photoFileId, {
-      caption:
-        `✅ Команда создана!\n\n` +
-        `🏷 Название: ${ctx.wizard.state.data.name}\n` +
-        `🏙 Город: ${ctx.wizard.state.data.city}\n` +
-        `🎂 Возраст: ${ctx.wizard.state.data.ageRange}\n` +
-        `👨‍🏫 Преподаватели: ${ctx.wizard.state.data.instructors}\n` +
-        `🏆 Достижения:\n${ctx.wizard.state.data.achievements.map(a => `• ${a}`).join("\n")}\n` +
-        `📝 Описание: ${ctx.wizard.state.data.description}\n` +
-        `👥 ${recruitingStatus}`
-    });
+    const MAX_CAPTION_LENGTH = 1024;
+
+    const achievementsText = ctx.wizard.state.data.achievements
+      .map((a) => `• ${a}`)
+      .join("\n");
+
+    let caption =
+      `✅ Команда создана!\n\n` +
+      `🏷 Название: ${ctx.wizard.state.data.name}\n` +
+      `🏙 Город: ${ctx.wizard.state.data.city}\n` +
+      `🎂 Возраст: ${ctx.wizard.state.data.ageRange}\n` +
+      `👨‍🏫 Преподаватели: ${ctx.wizard.state.data.instructors}\n` +
+      `🏆 Достижения:\n${achievementsText}\n` +
+      `📝 Описание: ${ctx.wizard.state.data.description}\n` +
+      `👥 ${
+        ctx.wizard.state.data.isRecruiting
+          ? "✅ Открыт для набора"
+          : "❌ Набор закрыт"
+      }`;
+
+    if (caption.length > MAX_CAPTION_LENGTH) {
+      caption = caption.slice(0, MAX_CAPTION_LENGTH - 3) + "...";
+    }
+
+    await ctx.replyWithPhoto(ctx.wizard.state.data.photoFileId, { caption });
   } catch (e) {
     console.error("Create team error:", e);
     await ctx.reply("❌ Ошибка при создании команды. Попробуй позже.");
