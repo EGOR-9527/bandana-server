@@ -149,26 +149,30 @@ START
 ============================================================ */
 
 async function start() {
+  // 🔥 СЕРВЕР СТАРТУЕТ СРАЗУ
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 Server running on ${PORT}`);
+  });
+
   try {
     await sequelize.authenticate();
-    await sequelize.sync();
     console.log("✅ PostgreSQL connected");
-
-    /*await initRedis();*/
-
-    try {
-      await bot.launch();
-      console.log("✅ Telegram bot started");
-    } catch (e) {
-      console.warn("⚠️ Bot error:", e.message);
-    }
-
-    app.listen(PORT, "0.0.0.0", () =>
-      console.log(`🚀 Server running on ${PORT}`)
-    );
   } catch (err) {
-    console.error("❌ Startup error:", err);
-    process.exit(1);
+    console.error("❌ DB auth error:", err.message);
+  }
+
+  try {
+    await sequelize.sync();
+    console.log("✅ Sequelize sync done");
+  } catch (err) {
+    console.error("❌ Sequelize sync error:", err.message);
+  }
+
+  try {
+    await bot.launch();
+    console.log("✅ Telegram bot started");
+  } catch (e) {
+    console.warn("⚠️ Bot error:", e.message);
   }
 }
 
