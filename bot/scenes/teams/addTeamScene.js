@@ -8,7 +8,15 @@ const {
   deleteOne,
 } = require("../../helpers/telegram");
 
-const trimCaption = (text) => (text ? (text.length > 4000 ? text.slice(0, 4000) + "…" : text) : "");
+// Функция для обрезки текста при показе итога
+const trimForDisplay = (text, maxLength = 1000) => {
+  if (!text) return "";
+  if (text.length <= maxLength) return text;
+  return text.slice(0, maxLength) + "…";
+};
+
+// Функция для обрезки подписи в Telegram
+const trimCaption = (text) => (text ? (text.length > 1024 ? text.slice(0, 1024) + "…" : text) : "");
 
 const safeReply = async (ctx, text, options = {}) => {
   try {
@@ -76,6 +84,7 @@ const processTextInput = (ctx, fieldName) => {
       ? ctx.message.text.split(";").map(a => a.trim()).filter(a => a)
       : [];
   } else {
+    // Сохраняем полный текст без ограничений
     ctx.wizard.state.data[fieldName] = ctx.message?.text?.trim() || "";
   }
 };
@@ -155,16 +164,37 @@ const saveAndFinish = async (ctx) => {
       ctx.wizard.state.data.achievements = [];
     }
 
-    // Создаем команду в базе данных
+    // Создаем команду в базе данных (сохраняем полные данные)
     await Teams.create(ctx.wizard.state.data);
 
-    // Формируем сообщение об успешном создании
+    // Формируем сообщение об успешном создании с обрезкой для отображения
     const recruitingStatus = ctx.wizard.state.data.isRecruiting ? "✅ Открыт для набора" : "❌ Набор закрыт";
-    const achievementsText = ctx.wizard.state.data.achievements.length
-      ? ctx.wizard.state.data.achievements.map(a => `• ${a}`).join("\n")
-      : "Нет достижений";
+    
+    // Обрабатываем достижения - обрезаем каждое достижение если нужно
+    let achievementsText;
+    if (ctx.wizard.state.data.achievements.length) {
+      const trimmedAchievements = ctx.wizard.state.data.achievements.map(a => 
+        `• ${trimForDisplay(a, 200)}`
+      );
+      achievementsText = trimmedAchievements.join("\n");
+      // Если общий текст достижений слишком длинный, обрезаем список
+      if (achievementsText.length > 1500) {
+        achievementsText = trimmedAchievements.slice(0, 5).join("\n");
+        achievementsText += `\n… и ещё ${trimmedAchievements.length - 5} достижений`;
+      }
+    } else {
+      achievementsText = "Нет достижений";
+    }
 
-    const caption = `✅ Команда создана!\n\n🏷 Название: ${ctx.wizard.state.data.name}\n🏙 Город: ${ctx.wizard.state.data.city}\n🎂 Возраст: ${ctx.wizard.state.data.ageRange}\n👨‍🏫 Преподаватели: ${ctx.wizard.state.data.instructors}\n🏆 Достижения:\n${achievementsText}\n📝 Описание: ${ctx.wizard.state.data.description}\n👥 ${recruitingStatus}`;
+    // Формируем финальное сообщение с обрезкой длинных полей
+    const caption = `✅ Команда создана!\n\n` +
+      `🏷 Название: ${trimForDisplay(ctx.wizard.state.data.name, 100)}\n` +
+      `🏙 Город: ${trimForDisplay(ctx.wizard.state.data.city, 100)}\n` +
+      `🎂 Возраст: ${trimForDisplay(ctx.wizard.state.data.ageRange, 100)}\n` +
+      `👨‍🏫 Преподаватели: ${trimForDisplay(ctx.wizard.state.data.instructors, 300)}\n` +
+      `🏆 Достижения:\n${achievementsText}\n` +
+      `📝 Описание: ${trimForDisplay(ctx.wizard.state.data.description, 500)}\n` +
+      `👥 ${recruitingStatus}`;
 
     // Отправляем финальное сообщение
     if (ctx.wizard.state.data.photoFileId) {
@@ -172,6 +202,28 @@ const saveAndFinish = async (ctx) => {
     } else {
       await safeReply(ctx, caption, { parse_mode: "HTML" });
     }
+    
+    // Отправляем дополнительное сообщение, если данные были обрезаны
+    const originalDescriptionLength = ctx.wizard.state.data.description.length;
+    const originalInstructorsLength = ctx.wizard.state.data.instructors.length;
+    const originalAchievementsCount = ctx.wizard.state.data.achievements.length;
+    
+    const warnings = [];
+    if (originalDescriptionLength > 500) {
+      warnings.push(`📝 Описание было сокращено с ${originalDescriptionLength} до 500 символов`);
+    }
+    if (originalInstructorsLength > 300) {
+      warnings.push(`👨‍🏫 Список преподавателей был сокращён с ${originalInstructorsLength} до 300 символов`);
+    }
+    if (originalAchievementsCount > 5) {
+      warnings.push(`🏆 Показаны первые 5 из ${originalAchievementsCount} достижений`);
+    }
+    
+    if (warnings.length > 0) {
+      const warningText = `ℹ️ <b>Примечание:</b>\n${warnings.join('\n')}\n\nПолная информация сохранена в базе данных.`;
+      await safeReply(ctx, warningText, { parse_mode: "HTML" });
+    }
+    
   } catch (e) {
     console.error("Create team error:", e);
     await safeReply(ctx, "❌ Ошибка при создании команды. Попробуй позже.");
@@ -314,7 +366,9 @@ const addTeamScene = new Scenes.WizardScene(
   async (ctx) => { 
     ctx.wizard.state.data = {}; 
     ctx.wizard.state.sentMessages = {}; 
-    const msg = await safeReply(ctx, "📸 Пришли фото команды"); 
+    const msg = await safeReply(ctx, "📸 Пришли фото команды\n\n<em>Примечание: все текстовые поля сохраняются полностью, но в итоговом сообщении могут быть сокращены для лучшего отображения.</em>", { 
+      parse_mode: "HTML" 
+    }); 
     if (msg) ctx.wizard.state.sentMessages.start = msg.message_id; 
     return ctx.wizard.next(); 
   },
@@ -377,7 +431,7 @@ const addTeamScene = new Scenes.WizardScene(
   
   // Шаг 6: Достижения команды
   async (ctx) => {
-    const validationResult = await validate(ctx, "Укажи достижения команды!", "text");
+    const validationResult = await validate(ctx, "Укажи достижения команды (через точку с запятой)!", "text");
     
     if (validationResult === "STOP") { 
       await clearMessages(ctx); 
@@ -407,21 +461,50 @@ const addTeamScene = new Scenes.WizardScene(
     
     if (validationResult === true) { 
       processTextInput(ctx, "achievements"); 
-      await safeDeleteAndShowPreview(ctx, "описание команды", 6); 
+      await safeDeleteAndShowPreview(ctx, "описание команда", 6); 
       return ctx.wizard.next(); 
     }
   },
   
   // Шаг 7: Описание команды
-  createInputHandler("description", 6),
-  
-  // Шаг 8: Набор в команду - показываем кнопки
-  async (ctx) => { 
-    await showRecruitingStep(ctx);
-    return ctx.wizard.next();
+  async (ctx) => {
+    const validationResult = await validate(ctx, "Введи описание команды!", "text");
+    
+    if (validationResult === "STOP") { 
+      await clearMessages(ctx); 
+      await ctx.scene.leave(); 
+      return; 
+    }
+    
+    if (validationResult === "BACK") { 
+      await safeDeleteAndShowPreview(ctx, "достижения команды (через ;)", 5); 
+      return ctx.wizard.back(); 
+    }
+    
+    if (validationResult === "NEXT") { 
+      if (!ctx.wizard.state.data.description) { 
+        const msg = await safeReply(ctx, "Сначала введи описание команды!"); 
+        if (msg) {
+          setTimeout(async () => { 
+            try { await ctx.deleteMessage(msg.message_id); } catch {} 
+          }, 1500);
+        } 
+        return; 
+      } 
+      
+      // Показываем кнопки набора
+      await showRecruitingStep(ctx);
+      return ctx.wizard.next(); 
+    }
+    
+    if (validationResult === true) { 
+      processTextInput(ctx, "description"); 
+      await showRecruitingStep(ctx);
+      return ctx.wizard.next(); 
+    }
   },
   
-  // Шаг 9: Обработка ответа о наборе
+  // Шаг 8: Обработка ответа о наборе
   async (ctx) => {
     await processRecruitingStep(ctx);
   }
