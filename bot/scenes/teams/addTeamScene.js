@@ -170,7 +170,7 @@ const addTeamScene = new Scenes.WizardScene(
         try { await ctx.deleteMessage(msg.message_id); } catch {}
       }, 1500);
       return;
-    }
+    } 
     
     const photo = ctx.message.photo.pop();
     ctx.wizard.state.data.photoFileId = photo.file_id;
