@@ -281,37 +281,33 @@ async function showTeamSlide(ctx) {
   const team = ctx.wizard.state.teams[idx];
   const total = ctx.wizard.state.teams.length;
 
-  const name = escapeMarkdown(team.name) || "_не указано_";
-  const city = escapeMarkdown(team.city) || "_не указано_";
-  const ageRange = escapeMarkdown(team.ageRange) || "_не указано_";
-  const instructors = escapeMarkdown(team.instructors) || "_не указано_";
-  const choreographer = escapeMarkdown(team.choreographer) || "_не указано_";
-  const description = escapeMarkdown(team.description) || "_не указано_";
-
-  const recruitingStatus = team.isRecruiting
-    ? "✅ *Открыт для набора*"
-    : "❌ *Набор закрыт*";
-
-  let achievementsText = "_не указано_";
-  if (team.achievements?.length) {
-    const escapedAchievements = team.achievements.map((a) => escapeMarkdown(a));
-    achievementsText = escapedAchievements.map((a) => `• ${a}`).join("\n");
-  }
+  const escape = (text) =>
+    text ? text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&") : "_не указано_";
 
   const caption = `*Команда ${idx + 1} из ${total}*
 
-🏷 *Название:* ${name}
-🏙 *Город:* ${city}
-🎂 *Возраст:* ${ageRange}
-👨‍🏫 *Преподаватели:* ${instructors}
-💃 *Хореограф:* ${choreographer}
-👥 *Статус набора:* ${recruitingStatus}
+🏷 *Название:* ${escape(team.name)}
+🏙 *Город:* ${escape(team.city)}
+🎂 *Возраст:* ${escape(team.ageRange)}
+👨‍🏫 *Преподаватели:* ${escape(team.instructors)}
+💃 *Хореограф:* ${escape(team.choreographer)}
+👥 *Статус набора:* ${team.isRecruiting ? "✅ Открыт" : "❌ Закрыт"}
 
 📝 *Описание:*
-${description}
+${escape(team.description)}
 
 🏆 *Достижения:*
-${achievementsText}`;
+${
+  team.achievements?.length
+    ? team.achievements.map((a) => `• ${escape(a)}`).join("\n")
+    : "_не указано_"
+}`;
+
+  const MAX_CAPTION = 1024;
+  const safeCaption =
+    caption.length > MAX_CAPTION
+      ? caption.slice(0, MAX_CAPTION - 3) + "..."
+      : caption;
 
   const keyboard = Markup.inlineKeyboard([
     [
@@ -323,13 +319,12 @@ ${achievementsText}`;
 
   await clearCurrentMessage(ctx);
 
-  let msg;
   try {
     if (team.photoFileId) {
       msg = await ctx.replyWithPhoto(team.photoFileId, {
-        caption,
+        caption: safeCaption,
         parse_mode: "Markdown",
-        ...keyboard,
+        reply_markup: keyboard.reply_markup,
       });
     } else if (
       team.fileName &&
@@ -338,57 +333,21 @@ ${achievementsText}`;
       msg = await ctx.replyWithPhoto(
         { source: path.join(uploadDir, team.fileName) },
         {
-          caption,
+          caption: safeCaption,
           parse_mode: "Markdown",
-          ...keyboard,
+          reply_markup: keyboard.reply_markup,
         }
       );
     } else {
-      msg = await ctx.reply(caption + "\n\n📷 Фото недоступно", {
+      msg = await ctx.reply(safeCaption + "\n\n📷 Фото недоступно", {
         parse_mode: "Markdown",
-        ...keyboard,
+        reply_markup: keyboard.reply_markup,
       });
     }
   } catch (error) {
-    console.error("Ошибка при отправке сообщения:", error);
-    const simpleCaption = `Команда ${idx + 1} из ${total}
-
-Название: ${team.name || "не указано"}
-Город: ${team.city || "не указано"}
-Возраст: ${team.ageRange || "не указано"}
-Преподаватели: ${team.instructors || "не указано"}
-Хореограф: ${team.choreographer || "не указано"}
-Статус набора: ${team.isRecruiting ? "✅ Открыт для набора" : "❌ Набор закрыт"}
-
-Описание: ${team.description || "не указано"}
-
-Достижения: ${
-      team.achievements?.length
-        ? team.achievements.map((a) => `• ${a}`).join("\n")
-        : "не указано"
-    }`;
-
-    if (team.photoFileId) {
-      msg = await ctx.replyWithPhoto(team.photoFileId, {
-        caption: simpleCaption,
-        ...keyboard,
-      });
-    } else if (
-      team.fileName &&
-      fs.existsSync(path.join(uploadDir, team.fileName))
-    ) {
-      msg = await ctx.replyWithPhoto(
-        { source: path.join(uploadDir, team.fileName) },
-        {
-          caption: simpleCaption,
-          ...keyboard,
-        }
-      );
-    } else {
-      msg = await ctx.reply(simpleCaption + "\n\nФото недоступно", {
-        ...keyboard,
-      });
-    }
+    console.error("Ошибка отправки сообщения:", error);
+    await ctx.reply("Произошла ошибка при отправке команды");
+    return;
   }
 
   ctx.wizard.state.currentMessageId = msg.message_id;
