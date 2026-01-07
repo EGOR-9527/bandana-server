@@ -28,7 +28,9 @@ const deleteTeamScene = new Scenes.WizardScene(
     if (!ctx.callbackQuery) return; // игнорируем текстовые сообщения
 
     const action = ctx.callbackQuery.data;
-    try { await ctx.answerCbQuery(); } catch {}
+    try {
+      await ctx.answerCbQuery();
+    } catch {}
 
     const idx = ctx.wizard.state.currentIndex;
     const teams = ctx.wizard.state.teams;
@@ -38,9 +40,15 @@ const deleteTeamScene = new Scenes.WizardScene(
 
       // Удаляем файл, если есть
       if (team.fileName) {
-        const filePath = path.resolve(__dirname, "../../../uploads", team.fileName);
+        const filePath = path.resolve(
+          __dirname,
+          "../../../uploads",
+          team.fileName
+        );
         if (fs.existsSync(filePath)) {
-          try { fs.unlinkSync(filePath); } catch {}
+          try {
+            fs.unlinkSync(filePath);
+          } catch {}
         }
       }
 
@@ -54,7 +62,8 @@ const deleteTeamScene = new Scenes.WizardScene(
         return ctx.scene.leave();
       }
 
-      ctx.wizard.state.currentIndex = idx >= teams.length ? teams.length - 1 : idx;
+      ctx.wizard.state.currentIndex =
+        idx >= teams.length ? teams.length - 1 : idx;
       return showTeamSlide(ctx);
     }
 
@@ -93,26 +102,31 @@ async function showTeamSlide(ctx) {
   let msg;
   const textRecruiting = team.isRecruiting ? "открыт" : "закрыт";
 
-  const achievementsText = team.achievements?.map(a => `• ${a}`).join("\n") || "—";
+  const achievementsText =
+    team.achievements?.map((a) => `• ${a}`).join("\n") || "—";
 
-  const text = 
+  const text =
+    `${idx + 1}/${ctx.wizard.state.teams.length}` +
     `🏷 Название: ${team.name}\n` +
     `🏙 Город: ${team.city}\n` +
     `🎂 Возраст: ${team.ageRange}\n` +
     `👨‍🏫 Преподаватели: ${team.instructors}\n` +
     `📝 Описание: ${team.description}\n` +
     `👥 Набор: ${textRecruiting}\n` +
-    `🏆 Достижения:\n${achievementsText}\n\n` +
-    `${idx + 1}/${ctx.wizard.state.teams.length}`;
+    `🏆 Достижения:\n${achievementsText}\n\n`;
 
   // Telegram ограничение на caption
   const MAX_CAPTION = 1024;
-  const caption = text.length > MAX_CAPTION ? text.slice(0, MAX_CAPTION - 3) + "..." : text;
+  const caption =
+    text.length > MAX_CAPTION ? text.slice(0, MAX_CAPTION - 3) + "..." : text;
 
   if (team.fileName) {
     const filePath = path.resolve(__dirname, "../../../uploads", team.fileName);
     if (fs.existsSync(filePath)) {
-      msg = await ctx.replyWithPhoto({ source: filePath }, { caption, reply_markup: keyboard.reply_markup });
+      msg = await ctx.replyWithPhoto(
+        { source: filePath },
+        { caption, reply_markup: keyboard.reply_markup }
+      );
     } else {
       msg = await ctx.reply(text, { reply_markup: keyboard.reply_markup });
     }
@@ -127,7 +141,9 @@ async function showTeamSlide(ctx) {
 async function clearCurrentMessage(ctx) {
   const ids = ctx.wizard.state.sentMessages || [];
   for (const id of ids) {
-    try { await ctx.deleteMessage(id); } catch {}
+    try {
+      await ctx.deleteMessage(id);
+    } catch {}
   }
   ctx.wizard.state.sentMessages = [];
 }
