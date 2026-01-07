@@ -31,6 +31,17 @@ const GLOBAL_COMMANDS = ["events", "gallery", "video", "team"];
 
 const ADMINS_ID = process.env.ADMINS_ID.split(",").map((id) => Number(id));
 
+async function notifyAdmins(message) {
+  for (const id of ADMINS_ID) {
+    try {
+      await bot.telegram.sendMessage(id, message);
+      await bot.telegram.sendMessage(id, "Перезапускаю сервер...");
+    } catch (e) {
+      console.error("Не удалось отправить уведомление админам:", e);
+    }
+  }
+}
+
 bot.use(async (ctx, next) => {
   const text = ctx.message?.text || ctx.callbackQuery?.data;
   if (!text) return next();
@@ -93,9 +104,15 @@ stage.action(/add_team|update_team|delete_team/, handleEventCallback);
 
 bot.use(stage.middleware());
 
+bot.catch(async (err, ctx) => {
+  console.error("Ошибка бота:", err);
+  await notifyAdmins(`⚠️ Ошибка в боте:\n${err.stack || err}`);
+  process.exit(1);
+});
+
 startCommand(bot);
 eventsCommand(bot);
 galleryCommand(bot);
 teamCommand(bot);
 
-module.exports = bot;
+module.exports = { bot, notifyAdmins };
