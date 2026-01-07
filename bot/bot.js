@@ -98,6 +98,4 @@ eventsCommand(bot);
 galleryCommand(bot);
 teamCommand(bot);
 
-bot.launch().then(() => console.log("Бот запущен"));
-
 module.exports = bot;

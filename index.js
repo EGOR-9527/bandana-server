@@ -157,7 +157,7 @@ async function start() {
     /*await initRedis();*/
 
     try {
-      bot.launch();
+      await bot.launch();
       console.log("✅ Telegram bot started");
     } catch (e) {
       console.warn("⚠️ Bot error:", e.message);
