@@ -3,10 +3,11 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const { startMessageMonitor } = require("./bot/messageMonitor");
 
 const sequelize = require("./config/db");
 const router = require("./routes/router");
-const { startMessageMonitor } = require("./bot/messageMonitor");
+const bot = require("./bot/bot");
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
@@ -44,21 +45,7 @@ app.use("/api", router);
 app.get("/health", (req, res) => {
   res.status(200).json({ 
     status: "OK", 
-    timestamp: new Date().toISOString(),
-    services: {
-      database: "connected",
-      telegram_monitor: "running",
-      api: "operational"
-    }
-  });
-});
-
-// Статус монитора Telegram
-app.get("/api/telegram-monitor/status", (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "Telegram message monitor is running",
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString() 
   });
 });
 
@@ -85,39 +72,26 @@ START
 
 async function start() {
   try {
-    // Подключение к базе данных
     await sequelize.authenticate();
     console.log("✅ PostgreSQL connected");
     
-    // Синхронизация базы данных (alter вместо force)
+    // Не используйте force: true на продакшене
     await sequelize.sync({ alter: true });
     console.log("✅ Database synced");
 
-    // Запуск монитора сообщений Telegram
-    console.log("🔄 Запуск Telegram Message Monitor...");
-    await startMessageMonitor();
-    console.log("✅ Telegram Message Monitor started");
+    // Запуск бота (если нужен)
+    if (bot && typeof bot.launch === "function") {
+      bot.launch();
+      console.log("✅ Telegram bot started");
+    }
 
-    // Запуск сервера
+    console.log("🔄 Запуск Telegram Message Monitor...");
+    await startMessageMonitor()
+
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📡 Health check: http://localhost:${PORT}/health`);
-      console.log(`📱 Telegram Monitor status: http://localhost:${PORT}/api/telegram-monitor/status`);
     });
-
-    // Обработка завершения работы
-    process.on('SIGINT', async () => {
-      console.log("\n🛑 Получен сигнал завершения...");
-      console.log("👋 До свидания!");
-      process.exit(0);
-    });
-
-    process.on('SIGTERM', async () => {
-      console.log("\n🛑 Получен сигнал терминации...");
-      console.log("👋 До свидания!");
-      process.exit(0);
-    });
-
   } catch (err) {
     console.error("❌ Startup error:", err);
     process.exit(1);
