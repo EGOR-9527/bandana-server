@@ -319,39 +319,38 @@ ${
 
   let msg;
   try {
-    // ИСПРАВЛЕНИЕ: Используем URL вместо file_id
-    if (team.fileUrl) {
-      const photoUrl = team.fileUrl.startsWith("http")
-        ? team.fileUrl
-        : `https://bandana-dance.ru${team.fileUrl}`;
+    if (team.fileName) {
+      const filePath = path.join(uploadDir, team.fileName);
 
-      msg = await ctx.replyWithPhoto(photoUrl, {
-        caption: safeCaption,
-        parse_mode: "Markdown",
-        reply_markup: keyboard.reply_markup,
-      });
-    } else if (
-      team.fileName &&
-      fs.existsSync(path.join(uploadDir, team.fileName))
-    ) {
-      msg = await ctx.replyWithPhoto(
-        { source: path.join(uploadDir, team.fileName) },
-        {
-          caption: safeCaption,
-          parse_mode: "Markdown",
-          reply_markup: keyboard.reply_markup,
-        },
-      );
+      if (fs.existsSync(filePath)) {
+        msg = await ctx.replyWithPhoto(
+          { source: filePath },
+          {
+            caption: safeCaption,
+            parse_mode: "Markdown",
+            reply_markup: keyboard.reply_markup,
+          },
+        );
+      } else {
+        console.error(`Файл не найден: ${filePath}`);
+        msg = await ctx.reply(
+          safeCaption + "\n\n📷 Файл не найден на сервере",
+          {
+            parse_mode: "Markdown",
+            reply_markup: keyboard.reply_markup,
+          },
+        );
+      }
     } else {
-      msg = await ctx.reply(safeCaption + "\n\n📷 Фото недоступно", {
+      msg = await ctx.reply(safeCaption + "\n\n📷 Фото не указано в БД", {
         parse_mode: "Markdown",
         reply_markup: keyboard.reply_markup,
       });
     }
   } catch (error) {
-    console.error("Ошибка отправки сообщения:", error);
+    console.error("Ошибка отправки команды:", error);
 
-    const simpleCaption = `Команда ${idx + 1} из ${total}\n\nФото недоступно`;
+    const simpleCaption = `Команда ${idx + 1} из ${total}\n\n📷 Ошибка загрузки фото`;
     msg = await ctx.reply(simpleCaption, {
       reply_markup: keyboard.reply_markup,
     });

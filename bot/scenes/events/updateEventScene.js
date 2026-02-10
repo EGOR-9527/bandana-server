@@ -201,31 +201,28 @@ ${place}`;
 
   let msg;
   try {
-    // ИСПРАВЛЕНИЕ: Сначала пробуем URL, потом file_id
-    if (event.fileUrl) {
-      const photoUrl = event.fileUrl.startsWith("http")
-        ? event.fileUrl
-        : `https://bandana-dance.ru${event.fileUrl}`;
+    // Просто берём файл из папки uploads по имени из БД
+    if (event.fileName) {
+      const filePath = path.join(uploadDir, event.fileName);
 
-      msg = await ctx.replyWithPhoto(photoUrl, {
-        caption,
-        parse_mode: "Markdown",
-        ...keyboard,
-      });
-    } else if (
-      event.fileName &&
-      fs.existsSync(path.join(uploadDir, event.fileName))
-    ) {
-      msg = await ctx.replyWithPhoto(
-        { source: path.join(uploadDir, event.fileName) },
-        {
-          caption,
+      if (fs.existsSync(filePath)) {
+        msg = await ctx.replyWithPhoto(
+          { source: filePath },
+          {
+            caption,
+            parse_mode: "Markdown",
+            ...keyboard,
+          },
+        );
+      } else {
+        console.error(`Файл не найден: ${filePath}`);
+        msg = await ctx.reply(caption + "\n\n📷 Файл не найден на сервере", {
           parse_mode: "Markdown",
           ...keyboard,
-        },
-      );
+        });
+      }
     } else {
-      msg = await ctx.reply(caption + "\n\n📷 Фото недоступно", {
+      msg = await ctx.reply(caption + "\n\n📷 Фото не указано в БД", {
         parse_mode: "Markdown",
         ...keyboard,
       });
@@ -233,14 +230,13 @@ ${place}`;
   } catch (error) {
     console.error("Ошибка при отправке события:", error);
 
-    // Резервный вариант без Markdown
     const simpleCaption = `Событие ${idx + 1} из ${total}
 
 Описание: ${event.description || "не указано"}
 Дата: ${event.date || "не указано"}
 Место: ${event.place || "не указано"}`;
 
-    msg = await ctx.reply(simpleCaption + "\n\n📷 Фото недоступно", {
+    msg = await ctx.reply(simpleCaption + "\n\n📷 Ошибка загрузки фото", {
       ...keyboard,
     });
   }

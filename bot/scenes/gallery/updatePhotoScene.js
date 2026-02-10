@@ -168,7 +168,6 @@ const updatePhotoScene = new Scenes.WizardScene(
 async function showPhotoSlide(ctx) {
   const idx = ctx.wizard.state.currentIndex;
   const photo = ctx.wizard.state.photos[idx];
-  const filePath = path.join(UPLOADS_DIR, photo.fileName);
   const total = ctx.wizard.state.photos.length;
 
   const footer = escapeMarkdown(photo.footer) || "_не указана_";
@@ -191,28 +190,27 @@ async function showPhotoSlide(ctx) {
 
   let msg;
   try {
-    // ИСПРАВЛЕНИЕ: Используем URL вместо file_id
-    if (photo.fileUrl) {
-      const photoUrl = photo.fileUrl.startsWith("http")
-        ? photo.fileUrl
-        : `https://bandana-dance.ru${photo.fileUrl}`;
+    if (photo.fileName) {
+      const filePath = path.join(UPLOADS_DIR, photo.fileName);
 
-      msg = await ctx.replyWithPhoto(photoUrl, {
-        caption,
-        parse_mode: "Markdown",
-        ...keyboard,
-      });
-    } else if (fs.existsSync(filePath)) {
-      msg = await ctx.replyWithPhoto(
-        { source: filePath },
-        {
-          caption,
+      if (fs.existsSync(filePath)) {
+        msg = await ctx.replyWithPhoto(
+          { source: filePath },
+          {
+            caption,
+            parse_mode: "Markdown",
+            ...keyboard,
+          },
+        );
+      } else {
+        console.error(`Файл не найден: ${filePath}`);
+        msg = await ctx.reply(caption + "\n\n📷 Файл не найден на сервере", {
           parse_mode: "Markdown",
           ...keyboard,
-        },
-      );
+        });
+      }
     } else {
-      msg = await ctx.reply(`${caption}\n\n📷 Фото недоступно на сервере`, {
+      msg = await ctx.reply(caption + "\n\n📷 Фото не указано в БД", {
         parse_mode: "Markdown",
         ...keyboard,
       });
@@ -225,7 +223,7 @@ async function showPhotoSlide(ctx) {
 Подпись: ${photo.footer || "не указана"}
 Фильтр: ${photo.filter || "не указан"}`;
 
-    msg = await ctx.reply(`${simpleCaption}\n\n📷 Фото недоступно`, {
+    msg = await ctx.reply(simpleCaption + "\n\n📷 Ошибка загрузки фото", {
       ...keyboard,
     });
   }
