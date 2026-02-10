@@ -40,7 +40,6 @@ const updatePhotoScene = new Scenes.WizardScene(
 
   // ---------- Шаг 1: Выбор фото и поля для редактирования ----------
   async (ctx) => {
-
     if (!ctx.callbackQuery) return;
 
     const data = ctx.callbackQuery.data;
@@ -90,7 +89,7 @@ const updatePhotoScene = new Scenes.WizardScene(
       };
 
       const msg = await ctx.reply(
-        messages[ctx.wizard.state.fieldToEdit] || "✏ Пришли новое значение:"
+        messages[ctx.wizard.state.fieldToEdit] || "✏ Пришли новое значение:",
       );
       ctx.wizard.state.sentMessages.push(msg.message_id);
 
@@ -133,14 +132,14 @@ const updatePhotoScene = new Scenes.WizardScene(
         const valid = await validate(
           ctx,
           `✏ Отправь новое значение для ${field}!`,
-          "text"
+          "text",
         );
         if (!valid) return;
 
         const text = ctx.message.text.trim();
         newData = { [field]: text };
         await ctx.reply(
-          `✅ ${field === "footer" ? "Подпись" : "Фильтр"} обновлен`
+          `✅ ${field === "footer" ? "Подпись" : "Фильтр"} обновлен`,
         );
       }
 
@@ -160,7 +159,7 @@ const updatePhotoScene = new Scenes.WizardScene(
 
     await showPhotoSlide(ctx);
     return ctx.wizard.selectStep(1);
-  }
+  },
 );
 
 // ================================
@@ -172,7 +171,6 @@ async function showPhotoSlide(ctx) {
   const filePath = path.join(UPLOADS_DIR, photo.fileName);
   const total = ctx.wizard.state.photos.length;
 
-  // Экранируем текстовые поля
   const footer = escapeMarkdown(photo.footer) || "_не указана_";
   const filter = escapeMarkdown(photo.filter) || "_не указан_";
 
@@ -193,8 +191,13 @@ async function showPhotoSlide(ctx) {
 
   let msg;
   try {
-    if (photo.photoFileId) {
-      msg = await ctx.replyWithPhoto(photo.photoFileId, {
+    // ИСПРАВЛЕНИЕ: Используем URL вместо file_id
+    if (photo.fileUrl) {
+      const photoUrl = photo.fileUrl.startsWith("http")
+        ? photo.fileUrl
+        : `https://bandana-dance.ru${photo.fileUrl}`;
+
+      msg = await ctx.replyWithPhoto(photoUrl, {
         caption,
         parse_mode: "Markdown",
         ...keyboard,
@@ -206,7 +209,7 @@ async function showPhotoSlide(ctx) {
           caption,
           parse_mode: "Markdown",
           ...keyboard,
-        }
+        },
       );
     } else {
       msg = await ctx.reply(`${caption}\n\n📷 Фото недоступно на сервере`, {
@@ -216,31 +219,15 @@ async function showPhotoSlide(ctx) {
     }
   } catch (error) {
     console.error("Ошибка при отправке фото:", error);
-    // Резервный вариант без Markdown
+
     const simpleCaption = `Фото ${idx + 1} из ${total}
     
 Подпись: ${photo.footer || "не указана"}
-Фильтр: ${photo.filter || "не указан"}
-Путь: ${photo.fileUrl || "не указан"}`;
+Фильтр: ${photo.filter || "не указан"}`;
 
-    if (photo.photoFileId) {
-      msg = await ctx.replyWithPhoto(photo.photoFileId, {
-        caption: simpleCaption,
-        ...keyboard,
-      });
-    } else if (fs.existsSync(filePath)) {
-      msg = await ctx.replyWithPhoto(
-        { source: filePath },
-        {
-          caption: simpleCaption,
-          ...keyboard,
-        }
-      );
-    } else {
-      msg = await ctx.reply(`${simpleCaption}\n\nФото недоступно на сервере`, {
-        ...keyboard,
-      });
-    }
+    msg = await ctx.reply(`${simpleCaption}\n\n📷 Фото недоступно`, {
+      ...keyboard,
+    });
   }
 
   ctx.wizard.state.currentMessageId = msg.message_id;

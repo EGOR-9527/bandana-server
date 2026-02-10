@@ -33,8 +33,6 @@ const updateEventScene = new Scenes.WizardScene(
   },
 
   async (ctx) => {
-    
-
     if (!ctx.callbackQuery) return;
     const data = ctx.callbackQuery.data;
     const events = ctx.wizard.state.events;
@@ -49,8 +47,8 @@ const updateEventScene = new Scenes.WizardScene(
             ? idx - 1
             : events.length - 1
           : idx < events.length - 1
-          ? idx + 1
-          : 0;
+            ? idx + 1
+            : 0;
 
       ctx.wizard.state.currentIndex = idx;
       await clearCurrentMessage(ctx);
@@ -168,7 +166,7 @@ const updateEventScene = new Scenes.WizardScene(
 
     await showEventSlide(ctx);
     return ctx.wizard.selectStep(1);
-  }
+  },
 );
 
 async function showEventSlide(ctx) {
@@ -176,7 +174,6 @@ async function showEventSlide(ctx) {
   const event = ctx.wizard.state.events[idx];
   const total = ctx.wizard.state.events.length;
 
-  // Экранируем текстовые поля
   const description = escapeMarkdown(event.description) || "_не указано_";
   const date = escapeMarkdown(event.date) || "_не указано_";
   const place = escapeMarkdown(event.place) || "_не указано_";
@@ -204,8 +201,13 @@ ${place}`;
 
   let msg;
   try {
-    if (event.photoFileId) {
-      msg = await ctx.replyWithPhoto(event.photoFileId, {
+    // ИСПРАВЛЕНИЕ: Сначала пробуем URL, потом file_id
+    if (event.fileUrl) {
+      const photoUrl = event.fileUrl.startsWith("http")
+        ? event.fileUrl
+        : `https://bandana-dance.ru${event.fileUrl}`;
+
+      msg = await ctx.replyWithPhoto(photoUrl, {
         caption,
         parse_mode: "Markdown",
         ...keyboard,
@@ -220,7 +222,7 @@ ${place}`;
           caption,
           parse_mode: "Markdown",
           ...keyboard,
-        }
+        },
       );
     } else {
       msg = await ctx.reply(caption + "\n\n📷 Фото недоступно", {
@@ -230,6 +232,7 @@ ${place}`;
     }
   } catch (error) {
     console.error("Ошибка при отправке события:", error);
+
     // Резервный вариант без Markdown
     const simpleCaption = `Событие ${idx + 1} из ${total}
 
@@ -237,27 +240,9 @@ ${place}`;
 Дата: ${event.date || "не указано"}
 Место: ${event.place || "не указано"}`;
 
-    if (event.photoFileId) {
-      msg = await ctx.replyWithPhoto(event.photoFileId, {
-        caption: simpleCaption,
-        ...keyboard,
-      });
-    } else if (
-      event.fileName &&
-      fs.existsSync(path.join(uploadDir, event.fileName))
-    ) {
-      msg = await ctx.replyWithPhoto(
-        { source: path.join(uploadDir, event.fileName) },
-        {
-          caption: simpleCaption,
-          ...keyboard,
-        }
-      );
-    } else {
-      msg = await ctx.reply(simpleCaption + "\n\nФото недоступно", {
-        ...keyboard,
-      });
-    }
+    msg = await ctx.reply(simpleCaption + "\n\n📷 Фото недоступно", {
+      ...keyboard,
+    });
   }
 
   ctx.wizard.state.currentMessageId = msg.message_id;

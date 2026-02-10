@@ -96,7 +96,6 @@ bot.use(stage.middleware());
 
 bot.catch(async (err, ctx) => {
   console.error("Ошибка бота:", err);
-  await notifyAdmins(`⚠️ Ошибка в боте:\n${err.stack || err}`);
   process.exit(1);
 });
 

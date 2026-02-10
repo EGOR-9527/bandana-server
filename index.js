@@ -41,13 +41,6 @@ ROUTES
 
 app.use("/api", router);
 
-// Проверка здоровья сервера
-app.get("/health", (req, res) => {
-  res.status(200).json({ 
-    status: "OK", 
-    timestamp: new Date().toISOString() 
-  });
-});
 
 // Обработка 404
 app.use((req, res) => {

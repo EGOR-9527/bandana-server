@@ -32,7 +32,6 @@ const updateTeamScene = new Scenes.WizardScene(
   },
 
   async (ctx) => {
-
     if (!ctx.callbackQuery) return;
     const data = ctx.callbackQuery.data;
     const teams = ctx.wizard.state.teams;
@@ -47,8 +46,8 @@ const updateTeamScene = new Scenes.WizardScene(
             ? idx - 1
             : teams.length - 1
           : idx < teams.length - 1
-          ? idx + 1
-          : 0;
+            ? idx + 1
+            : 0;
 
       ctx.wizard.state.currentIndex = idx;
       await clearCurrentMessage(ctx);
@@ -130,7 +129,7 @@ const updateTeamScene = new Scenes.WizardScene(
       try {
         await Teams.update(
           { isRecruiting: newStatus },
-          { where: { id: teamId } }
+          { where: { id: teamId } },
         );
 
         const fresh = await Teams.findByPk(teamId);
@@ -223,7 +222,7 @@ const updateTeamScene = new Scenes.WizardScene(
       } else if (field === "achievements") {
         if (!ctx.message?.text?.trim()) {
           await ctx.reply(
-            "Пожалуйста, пришли текст достижений через точку с запятой (;)"
+            "Пожалуйста, пришли текст достижений через точку с запятой (;)",
           );
           return;
         }
@@ -272,7 +271,7 @@ const updateTeamScene = new Scenes.WizardScene(
 
     await showTeamSlide(ctx);
     return ctx.wizard.selectStep(1);
-  }
+  },
 );
 
 async function showTeamSlide(ctx) {
@@ -318,9 +317,15 @@ ${
 
   await clearCurrentMessage(ctx);
 
+  let msg;
   try {
-    if (team.photoFileId) {
-      msg = await ctx.replyWithPhoto(team.photoFileId, {
+    // ИСПРАВЛЕНИЕ: Используем URL вместо file_id
+    if (team.fileUrl) {
+      const photoUrl = team.fileUrl.startsWith("http")
+        ? team.fileUrl
+        : `https://bandana-dance.ru${team.fileUrl}`;
+
+      msg = await ctx.replyWithPhoto(photoUrl, {
         caption: safeCaption,
         parse_mode: "Markdown",
         reply_markup: keyboard.reply_markup,
@@ -335,7 +340,7 @@ ${
           caption: safeCaption,
           parse_mode: "Markdown",
           reply_markup: keyboard.reply_markup,
-        }
+        },
       );
     } else {
       msg = await ctx.reply(safeCaption + "\n\n📷 Фото недоступно", {
@@ -345,8 +350,11 @@ ${
     }
   } catch (error) {
     console.error("Ошибка отправки сообщения:", error);
-    await ctx.reply("Произошла ошибка при отправке команды");
-    return;
+
+    const simpleCaption = `Команда ${idx + 1} из ${total}\n\nФото недоступно`;
+    msg = await ctx.reply(simpleCaption, {
+      reply_markup: keyboard.reply_markup,
+    });
   }
 
   ctx.wizard.state.currentMessageId = msg.message_id;
