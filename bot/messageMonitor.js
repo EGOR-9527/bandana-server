@@ -3,8 +3,8 @@ const fs = require('fs');
 const path = require('path');
 
 // ================= CONFIG =================
-const BOT_TOKEN ="5250315160:AAE9mQUY2rvqR3nDo45QZSqZ3rVvkqZIiug";
-const NOTIFICATION_CHAT_ID ="8443013313"; // Опционально: для отправки уведомлений
+const BOT_TOKEN = "5250315160:AAE9mQUY2rvqR3nDo45QZSqZ3rVvkqZIiug";
+const NOTIFICATION_CHAT_ID = "8443013313"; // Опционально: для отправки уведомлений
 
 // ================= GLOBALS =================
 const seenMessages = new Set(); // Для отслеживания уже показанных сообщений
@@ -84,9 +84,8 @@ function extractMessageContent(messageData) {
         content = messageData.caption;
         msgType = "caption";
     } else if (messageData.photo) {
-        // Получаем самую большую версию фото
         const photos = messageData.photo;
-        const largestPhoto = photos[photos.length - 1]; // Последний элемент - самое большое фото
+        const largestPhoto = photos[photos.length - 1];
         const fileId = largestPhoto.file_id || '';
         const fileSize = largestPhoto.file_size || 0;
         
@@ -165,7 +164,6 @@ function extractMessageContent(messageData) {
         const emoji = sticker.emoji || '';
         const setName = sticker.set_name || 'Неизвестный набор';
         
-        // Получаем информацию о размере стикера
         let dimensions = "Неизвестно";
         if (sticker.thumb) {
             const thumb = sticker.thumb;
@@ -196,7 +194,7 @@ function extractMessageContent(messageData) {
             mime_type: mimeType,
             file_size: fileSize
         };
-    } else if (messageData.animation) { // GIF
+    } else if (messageData.animation) {
         const animation = messageData.animation;
         const fileId = animation.file_id || '';
         const fileSize = animation.file_size || 0;
@@ -221,7 +219,7 @@ function extractMessageContent(messageData) {
         const videoNote = messageData.video_note;
         const fileId = videoNote.file_id || '';
         const duration = videoNote.duration || 0;
-        const length = videoNote.length || 0; // Диаметр видео-круга
+        const length = videoNote.length || 0;
         
         content = `🎥 Видеосообщение (круглое)\nДиаметр: ${length}px, Длительность: ${duration} сек`;
         msgType = "video_note";
@@ -235,7 +233,6 @@ function extractMessageContent(messageData) {
         const latitude = loc.latitude;
         const longitude = loc.longitude;
         
-        // Ссылка на Google Maps
         const mapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
         
         content = `📍 Локация\nШирота: ${latitude}\nДолгота: ${longitude}\n🌍 Карта: ${mapsLink}`;
@@ -260,7 +257,9 @@ function extractMessageContent(messageData) {
         msgType = "contact";
         mediaInfo = {
             phone_number: phoneNumber,
-            user_id: userId
+            user_id: userId,
+            first_name: firstName,
+            last_name: lastName
         };
     } else if (messageData.poll) {
         const poll = messageData.poll;
@@ -292,7 +291,6 @@ function extractMessageContent(messageData) {
         content = `🎲 ${diceName.charAt(0).toUpperCase() + diceName.slice(1)}: ${emoji} = ${value}`;
         msgType = "dice";
     } else {
-        // Показываем все доступные поля для отладки
         const availableFields = Object.keys(messageData).filter(key => 
             !['from', 'chat', 'date', 'message_id'].includes(key)
         );
@@ -300,12 +298,7 @@ function extractMessageContent(messageData) {
         msgType = "unknown";
     }
     
-    // Добавляем информацию о медиа, если есть
-    if (Object.keys(mediaInfo).length > 0) {
-        content += `\n📋 Медиа-инфо: ${JSON.stringify(mediaInfo, null, 2)}`;
-    }
-    
-    return { content, msgType };
+    return { content, msgType, mediaInfo };
 }
 
 function processUserInfo(userData, updateType = "message") {
@@ -337,7 +330,6 @@ function formatMessage(userInfo, messageContent, messageType, messageId, chatInf
         name += ` ${userInfo.last_name}`;
     }
     
-    // Информация о чате
     let chatInfoText = "";
     if (chatInfo) {
         const chatType = chatInfo.type || 'private';
@@ -352,7 +344,6 @@ function formatMessage(userInfo, messageContent, messageType, messageId, chatInf
         }
     }
     
-    // Иконка типа сообщения
     const typeIcons = {
         'text': '📝',
         'photo': '📷',
@@ -467,26 +458,113 @@ async function sendToTelegramChat(message) {
         try {
             await axios.post(url, payload, { timeout: 5000 });
         } catch (error) {
-            console.log(`Ошибка отправки в Telegram: ${error.message}`);
+            console.log(`Ошибка отправки текста в Telegram: ${error.message}`);
         }
+    }
+}
+
+// НОВАЯ ФУНКЦИЯ: Отправка медиафайлов
+async function sendMediaToTelegram(messageType, mediaInfo, caption = "") {
+    if (!NOTIFICATION_CHAT_ID || !mediaInfo.file_id) return;
+    
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/`;
+    let method = "";
+    let payload = {
+        chat_id: NOTIFICATION_CHAT_ID
+    };
+    
+    try {
+        switch (messageType) {
+            case 'photo':
+                method = 'sendPhoto';
+                payload.photo = mediaInfo.file_id;
+                if (caption) payload.caption = caption;
+                break;
+                
+            case 'video':
+                method = 'sendVideo';
+                payload.video = mediaInfo.file_id;
+                if (caption) payload.caption = caption;
+                break;
+                
+            case 'audio':
+                method = 'sendAudio';
+                payload.audio = mediaInfo.file_id;
+                if (caption) payload.caption = caption;
+                break;
+                
+            case 'voice':
+                method = 'sendVoice';
+                payload.voice = mediaInfo.file_id;
+                if (caption) payload.caption = caption;
+                break;
+                
+            case 'document':
+                method = 'sendDocument';
+                payload.document = mediaInfo.file_id;
+                if (caption) payload.caption = caption;
+                break;
+                
+            case 'sticker':
+                method = 'sendSticker';
+                payload.sticker = mediaInfo.file_id;
+                break;
+                
+            case 'animation':
+                method = 'sendAnimation';
+                payload.animation = mediaInfo.file_id;
+                if (caption) payload.caption = caption;
+                break;
+                
+            case 'video_note':
+                method = 'sendVideoNote';
+                payload.video_note = mediaInfo.file_id;
+                break;
+                
+            case 'location':
+                method = 'sendLocation';
+                payload.latitude = mediaInfo.latitude;
+                payload.longitude = mediaInfo.longitude;
+                delete payload.chat_id;
+                payload.chat_id = NOTIFICATION_CHAT_ID;
+                break;
+                
+            case 'contact':
+                method = 'sendContact';
+                payload.phone_number = mediaInfo.phone_number;
+                payload.first_name = mediaInfo.first_name || 'Контакт';
+                if (mediaInfo.last_name) payload.last_name = mediaInfo.last_name;
+                break;
+                
+            default:
+                return; // Неподдерживаемый тип
+        }
+        
+        if (method) {
+            await axios.post(url + method, payload, { timeout: 10000 });
+            console.log(`✅ Медиафайл отправлен: ${messageType}`);
+        }
+        
+    } catch (error) {
+        console.log(`❌ Ошибка отправки медиа (${messageType}): ${error.message}`);
     }
 }
 
 function printWelcome() {
     console.log("=".repeat(60));
-    console.log("TELEGRAM MESSAGE MONITOR v3.0");
-    console.log("Полная поддержка медиафайлов (Node.js)");
+    console.log("TELEGRAM MESSAGE MONITOR v4.0 - MEDIA FORWARDING");
+    console.log("Полная поддержка медиафайлов с пересылкой (Node.js)");
     console.log("=".repeat(60));
     console.log("Поддерживаемые типы сообщений:");
     console.log("• 📝 Текст и эмодзи");
-    console.log("• 📷 Фото (с размерами и размером файла)");
-    console.log("• 🎬 Видео (с длительностью и разрешением)");
-    console.log("• 🎵 Аудио (с исполнителем и названием)");
-    console.log("• 🎤 Голосовые сообщения");
-    console.log("• 🩷 Стикеры (с эмодзи и названием набора)");
-    console.log("• 📎 Документы");
-    console.log("• 🎞️ GIF анимации");
-    console.log("• 🎥 Видеосообщения (круглые)");
+    console.log("• 📷 Фото (с пересылкой оригинала)");
+    console.log("• 🎬 Видео (с пересылкой оригинала)");
+    console.log("• 🎵 Аудио (с пересылкой оригинала)");
+    console.log("• 🎤 Голосовые сообщения (с пересылкой)");
+    console.log("• 🩷 Стикеры (с пересылкой)");
+    console.log("• 📎 Документы (с пересылкой)");
+    console.log("• 🎞️ GIF анимации (с пересылкой)");
+    console.log("• 🎥 Видеосообщения круглые (с пересылкой)");
     console.log("• 📍 Локации (со ссылкой на карты)");
     console.log("• 👤 Контакты");
     console.log("• 📊 Опросы и викторины");
@@ -510,7 +588,6 @@ async function monitorUpdates() {
                 let messageId = null;
                 let updateType = "unknown";
                 
-                // Обработка обычных сообщений
                 if (update.message) {
                     messageData = update.message;
                     userData = messageData.from;
@@ -518,7 +595,6 @@ async function monitorUpdates() {
                     messageId = messageData.message_id;
                     updateType = "message";
                 }
-                // Обработка отредактированных сообщений
                 else if (update.edited_message) {
                     messageData = update.edited_message;
                     userData = messageData.from;
@@ -526,7 +602,6 @@ async function monitorUpdates() {
                     messageId = messageData.message_id;
                     updateType = "edited_message";
                 }
-                // Обработка callback-запросов (кнопки)
                 else if (update.callback_query) {
                     const callbackData = update.callback_query;
                     userData = callbackData.from;
@@ -535,7 +610,6 @@ async function monitorUpdates() {
                     messageId = callbackData.id;
                     updateType = "callback";
                 }
-                // Обработка inline-запросов
                 else if (update.inline_query) {
                     const inlineData = update.inline_query;
                     userData = inlineData.from;
@@ -547,10 +621,8 @@ async function monitorUpdates() {
                 }
                 
                 if (userData && userData.id && messageData) {
-                    // Извлекаем содержимое сообщения
-                    const { content: messageContent, msgType: messageType } = extractMessageContent(messageData);
+                    const { content: messageContent, msgType: messageType, mediaInfo } = extractMessageContent(messageData);
                     
-                    // Создаем уникальный ключ для предотвращения дублирования
                     let messageKey;
                     if (messageId) {
                         messageKey = `${userData.id}_${messageId}_${updateType}`;
@@ -561,25 +633,28 @@ async function monitorUpdates() {
                     if (!seenMessages.has(messageKey)) {
                         seenMessages.add(messageKey);
                         
-                        // Обрабатываем информацию о пользователе
                         const userInfo = processUserInfo(userData, updateType);
                         
-                        // Форматируем сообщения
                         const consoleMsg = formatConsoleMessage(userInfo, messageContent, messageType, messageId, chatInfo);
                         const telegramMsg = formatMessage(userInfo, messageContent, messageType, messageId, chatInfo);
                         
-                        // Вывод в консоль
                         console.log(consoleMsg);
                         
-                        // Отправка в Telegram чат (если NOTIFICATION_CHAT_ID указан)
+                        // Отправляем текстовую информацию
                         if (NOTIFICATION_CHAT_ID) {
                             await sendToTelegramChat(telegramMsg);
+                            
+                            // Если есть медиафайл - отправляем его ОТДЕЛЬНЫМ сообщением
+                            if (mediaInfo && mediaInfo.file_id) {
+                                const mediaCaption = messageData.caption || `От: ${userInfo.first_name} (@${userInfo.username})`;
+                                await sendMediaToTelegram(messageType, mediaInfo, mediaCaption);
+                            }
                         }
                     }
                 }
             }
             
-            await new Promise(resolve => setTimeout(resolve, 300)); // Небольшая пауза между запросами
+            await new Promise(resolve => setTimeout(resolve, 300));
             
         } catch (error) {
             if (error.message === 'SIGINT') {
@@ -588,22 +663,19 @@ async function monitorUpdates() {
             }
             console.log(`\n⚠️ Ошибка в основном цикле: ${error.message}`);
             console.error(error.stack);
-            await new Promise(resolve => setTimeout(resolve, 5000)); // Пауза при ошибке
+            await new Promise(resolve => setTimeout(resolve, 5000));
         }
     }
 }
 
-// ================= MAIN =================
 async function startMessageMonitor() {
     printWelcome();
     
-    // Проверка токена
     if (!await testBotToken()) {
         console.log("Проверьте правильность токена бота!");
         process.exit(1);
     }
     
-    // Запуск мониторинга в фоновом режиме
     monitorUpdates().catch(error => {
         console.log(`Критическая ошибка: ${error.message}`);
         console.error(error.stack);
