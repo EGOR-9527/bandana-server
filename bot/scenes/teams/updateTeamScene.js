@@ -32,7 +32,6 @@ const updateTeamScene = new Scenes.WizardScene(
   },
 
   async (ctx) => {
-    if (ctx.message) return ctx.wizard.next();
 
     if (!ctx.callbackQuery) return;
     const data = ctx.callbackQuery.data;

@@ -40,7 +40,6 @@ const updatePhotoScene = new Scenes.WizardScene(
 
   // ---------- Шаг 1: Выбор фото и поля для редактирования ----------
   async (ctx) => {
-    if (ctx.message) return ctx.wizard.next(); // Добавлено для обработки текстовых сообщений
 
     if (!ctx.callbackQuery) return;
 
