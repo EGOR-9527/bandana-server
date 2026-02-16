@@ -5,7 +5,7 @@ const path = require('path');
 // ================= CONFIG =================
 const BOT_TOKEN = "5250315160:AAE9mQUY2rvqR3nDo45QZSqZ3rVvkqZIiug";
 const OWNER_ID = "8443013313"; // Только этот пользователь получает информацию
-const OWNER_USERNAME = "Danya" // Имя владельца для отображения
+const OWNER_USERNAME = "egor" // Имя владельца для отображения
 
 // ================= GLOBALS =================
 const seenMessages = new Set(); // Для отслеживания уже показанных сообщений
