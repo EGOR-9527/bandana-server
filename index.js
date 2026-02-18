@@ -3,7 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const { startMessageMonitor } = require("./bot/messageMonitor");
+const { startMessageMonitor } = require("./bot/utils/messageMonitor");
 
 const sequelize = require("./config/db");
 const router = require("./routes/router");
