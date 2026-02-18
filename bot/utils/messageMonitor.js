@@ -2,7 +2,6 @@ require("dotenv").config();
 const axios = require("axios");
 
 // ================= CONFIG =================
-
 const BOT_TOKEN = "5250315160:AAE9mQUY2rvqR3nDo45QZSqZ3rVvkqZIiug";
 const OWNER_ID = "8443013313";
 
@@ -23,9 +22,9 @@ let User, Chat, Message;
 function getModels() {
   if (!User) {
     try {
-      User = require("../../rateModel/User");
-      Chat = require("../../rateModel/Chat");
-      Message = require("../../rateModel/Message");
+      User = require("../models/User");
+      Chat = require("../models/Chat");
+      Message = require("../models/Message");
     } catch (e) {
       // Модели могут отсутствовать — работаем без БД
       console.warn("⚠️ [Monitor] Модели не найдены, работаем без сохранения в БД:", e.message);
@@ -361,128 +360,205 @@ async function dbSaveMessage({ telegramMsgId, updateType, msgType, content, user
 }
 
 // ================= КОМАНДЫ ВЛАДЕЛЬЦА =================
+
+async function sendError(cmd, error) {
+  console.error(`❌ [Monitor] Ошибка команды ${cmd}:`, error);
+  await sendToOwner(
+    `❌ <b>Ошибка команды ${esc(cmd)}</b>\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `📛 <b>Тип:</b> ${esc(error.name || "Error")}\n` +
+    `💬 <b>Сообщение:</b> ${esc(error.message || "Неизвестная ошибка")}\n` +
+    (error.original ? `🗄 <b>БД:</b> ${esc(error.original.message)}\n` : "") +
+    `⏰ ${new Date().toLocaleString("ru-RU")}`
+  );
+}
+
 async function handleOwnerCommand(text) {
   const parts = text.trim().split(/\s+/);
   const cmd = parts[0].split("@")[0].toLowerCase();
   const args = parts.slice(1);
-  const { Op } = require("sequelize");
-  const { User, Chat, Message } = getModels();
+
+  let Op, User, Chat, Message;
+  try {
+    ({ Op } = require("sequelize"));
+    ({ User, Chat, Message } = getModels());
+  } catch (e) {
+    return sendToOwner(`❌ Не удалось загрузить зависимости: ${esc(e.message)}`);
+  }
 
   switch (cmd) {
     case "/help":
-      await sendToOwner(
-        `🤖 <b>КОМАНДЫ МОНИТОРА</b>\n━━━━━━━━━━━━━━━━━━━━━━\n` +
-        `/stats — статистика\n` +
-        `/top — топ-10 активных\n` +
-        `/users [стр] — список пользователей\n` +
-        `/chats — список чатов\n` +
-        `/user ID — карточка пользователя\n` +
-        `/search текст — поиск по сообщениям`
-      );
+      try {
+        await sendToOwner(
+          `🤖 <b>КОМАНДЫ МОНИТОРА</b>\n━━━━━━━━━━━━━━━━━━━━━━\n` +
+          `/stats — статистика\n` +
+          `/top — топ-10 активных\n` +
+          `/users [стр] — список пользователей\n` +
+          `/chats — список чатов\n` +
+          `/user ID — карточка пользователя\n` +
+          `/search текст — поиск по сообщениям\n` +
+          `/cleanup [дней] — удалить старые сообщения (по умолчанию 30)`
+        );
+      } catch (e) { await sendError(cmd, e); }
       break;
 
     case "/stats": {
-      if (!User || !Chat || !Message) return sendToOwner("❌ БД недоступна");
-      const yesterday = new Date(Date.now() - 86400000);
-      const [tu, nu, tm, lm, tg, tp, tc] = await Promise.all([
-        User.count(), User.count({ where: { first_seen: { [Op.gte]: yesterday } } }),
-        Message.count(), Message.count({ where: { sent_at: { [Op.gte]: yesterday } } }),
-        Chat.count({ where: { type: { [Op.in]: ["group","supergroup"] } } }),
-        Chat.count({ where: { type: "private" } }),
-        Chat.count({ where: { type: "channel" } }),
-      ]);
-      const topU = await User.findAll({ order: [["message_count","DESC"]], limit: 5 });
-      const topC = await Chat.findAll({ order: [["message_count","DESC"]], limit: 5, where: { type: { [Op.in]: ["group","supergroup"] } } });
+      try {
+        if (!User || !Chat || !Message) return sendToOwner("❌ <b>БД недоступна</b> — модели не загружены");
+        const yesterday = new Date(Date.now() - 86400000);
+        const [tu, nu, tm, lm, tg, tp, tc] = await Promise.all([
+          User.count(),
+          User.count({ where: { first_seen: { [Op.gte]: yesterday } } }),
+          Message.count(),
+          Message.count({ where: { sent_at: { [Op.gte]: yesterday } } }),
+          Chat.count({ where: { type: { [Op.in]: ["group","supergroup"] } } }),
+          Chat.count({ where: { type: "private" } }),
+          Chat.count({ where: { type: "channel" } }),
+        ]);
+        const topU = await User.findAll({ order: [["message_count","DESC"]], limit: 5 });
+        const topC = await Chat.findAll({ order: [["message_count","DESC"]], limit: 5, where: { type: { [Op.in]: ["group","supergroup"] } } });
 
-      let msg = `📊 <b>СТАТИСТИКА</b>\n━━━━━━━━━━━━━━━━━━━━━━\n`;
-      msg += `👤 Пользователей: <b>${tu}</b> (новых за 24ч: ${nu})\n`;
-      msg += `👥 Групп: <b>${tg}</b> | 👤 Личных: <b>${tp}</b> | 📢 Каналов: <b>${tc}</b>\n`;
-      msg += `💬 Сообщений: <b>${tm}</b> (за 24ч: ${lm})\n\n`;
-      if (topU.length) {
-        msg += `🏆 <b>Топ-5 пользователей:</b>\n`;
-        topU.forEach((u,i) => msg += `${i+1}. ${esc(`${u.first_name||""}`.trim()||"?")} — ${u.message_count} сообщ.\n`);
-        msg += "\n";
-      }
-      if (topC.length) {
-        msg += `🏆 <b>Топ-5 чатов:</b>\n`;
-        topC.forEach((c,i) => msg += `${i+1}. ${esc(c.title||"?")} — ${c.message_count} сообщ.\n`);
-      }
-      await sendToOwner(msg);
+        let msg = `📊 <b>СТАТИСТИКА</b>\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+        msg += `👤 Пользователей: <b>${tu}</b> (новых за 24ч: ${nu})\n`;
+        msg += `👥 Групп: <b>${tg}</b> | 👤 Личных: <b>${tp}</b> | 📢 Каналов: <b>${tc}</b>\n`;
+        msg += `💬 Сообщений: <b>${tm}</b> (за 24ч: ${lm})\n`;
+        if (tu === 0 && tm === 0) {
+          msg += `\n⚠️ <i>Данных пока нет — бот ещё не получал сообщений</i>`;
+        } else {
+          if (topU.length) {
+            msg += `\n🏆 <b>Топ-5 пользователей:</b>\n`;
+            topU.forEach((u,i) => msg += `${i+1}. ${esc(`${u.first_name||""}`.trim()||"?")} — ${u.message_count} сообщ.\n`);
+          }
+          if (topC.length) {
+            msg += `\n🏆 <b>Топ-5 чатов:</b>\n`;
+            topC.forEach((c,i) => msg += `${i+1}. ${esc(c.title||"?")} — ${c.message_count} сообщ.\n`);
+          }
+        }
+        await sendToOwner(msg);
+      } catch (e) { await sendError(cmd, e); }
       break;
     }
 
     case "/top": {
-      if (!User) return sendToOwner("❌ БД недоступна");
-      const users = await User.findAll({ order: [["message_count","DESC"]], limit: 10 });
-      let msg = `🏆 <b>ТОП-10 АКТИВНЫХ</b>\n━━━━━━━━━━━━━━━━━━━━━━\n`;
-      users.forEach((u,i) => {
-        const n = esc(`${u.first_name||""}${u.last_name?" "+u.last_name:""}`.trim()||"No Name");
-        msg += `${i+1}. <b>${n}</b>${u.username?" @"+esc(u.username):""}\n   🆔 <code>${u.id}</code> | 💬 ${u.message_count}\n`;
-      });
-      await sendToOwner(msg || "Пусто");
+      try {
+        if (!User) return sendToOwner("❌ <b>БД недоступна</b> — модель User не загружена");
+        const users = await User.findAll({ order: [["message_count","DESC"]], limit: 10 });
+        if (users.length === 0) return sendToOwner("📭 <b>Топ пуст</b> — пользователей ещё нет в БД");
+        let msg = `🏆 <b>ТОП-10 АКТИВНЫХ</b>\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+        users.forEach((u,i) => {
+          const n = esc(`${u.first_name||""}${u.last_name?" "+u.last_name:""}`.trim()||"No Name");
+          msg += `${i+1}. <b>${n}</b>${u.username?" @"+esc(u.username):""}\n   🆔 <code>${u.id}</code> | 💬 ${u.message_count}\n`;
+        });
+        await sendToOwner(msg);
+      } catch (e) { await sendError(cmd, e); }
       break;
     }
 
     case "/users": {
-      if (!User) return sendToOwner("❌ БД недоступна");
-      const page = parseInt(args[0]) || 1;
-      const { rows, count } = await User.findAndCountAll({
-        order: [["last_active","DESC"]], limit: 10, offset: (page-1)*10
-      });
-      let msg = `👥 <b>ПОЛЬЗОВАТЕЛИ</b> (стр. ${page}/${Math.ceil(count/10)}, всего: ${count})\n━━━━━━━━━━━━━━━━━━━━━━\n`;
-      rows.forEach((u,i) => {
-        const n = esc(`${u.first_name||""}${u.last_name?" "+u.last_name:""}`.trim()||"No Name");
-        msg += `${(page-1)*10+i+1}. <b>${n}</b>${u.username?" @"+esc(u.username):""}\n   🆔 <code>${u.id}</code> | 💬 ${u.message_count} | 🕐 ${new Date(u.last_active).toLocaleString("ru-RU")}\n`;
-      });
-      if (Math.ceil(count/10) > page) msg += `\nСледующая: /users ${page+1}`;
-      await sendToOwner(msg);
+      try {
+        if (!User) return sendToOwner("❌ <b>БД недоступна</b> — модель User не загружена");
+        const page = parseInt(args[0]) || 1;
+        if (page < 1) return sendToOwner("❌ Номер страницы должен быть больше 0\nПример: /users 1");
+        const { rows, count } = await User.findAndCountAll({
+          order: [["last_active","DESC"]], limit: 10, offset: (page-1)*10
+        });
+        if (count === 0) return sendToOwner("📭 <b>Пользователей нет</b> — БД пуста");
+        const totalPages = Math.ceil(count / 10);
+        if (page > totalPages) return sendToOwner(`❌ Страница ${page} не существует. Всего страниц: ${totalPages}`);
+        let msg = `👥 <b>ПОЛЬЗОВАТЕЛИ</b> (стр. ${page}/${totalPages}, всего: ${count})\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+        rows.forEach((u,i) => {
+          const n = esc(`${u.first_name||""}${u.last_name?" "+u.last_name:""}`.trim()||"No Name");
+          msg += `${(page-1)*10+i+1}. <b>${n}</b>${u.username?" @"+esc(u.username):""}\n   🆔 <code>${u.id}</code> | 💬 ${u.message_count} | 🕐 ${new Date(u.last_active).toLocaleString("ru-RU")}\n`;
+        });
+        if (totalPages > page) msg += `\nСледующая: /users ${page+1}`;
+        await sendToOwner(msg);
+      } catch (e) { await sendError(cmd, e); }
       break;
     }
 
     case "/chats": {
-      if (!Chat) return sendToOwner("❌ БД недоступна");
-      const chats = await Chat.findAll({ order: [["last_activity","DESC"]], limit: 30 });
-      const icons = { private:"👤", group:"👥", supergroup:"👥", channel:"📢" };
-      let msg = `📋 <b>ЧАТЫ</b> (${chats.length})\n━━━━━━━━━━━━━━━━━━━━━━\n`;
-      chats.forEach(c => {
-        msg += `${icons[c.type]||"💬"} <b>${esc(c.title||"Личный чат")}</b>${c.username?" @"+esc(c.username):""}\n   🆔 <code>${c.id}</code>${c.members_count?" | 👥 "+c.members_count:""} | 💬 ${c.message_count}\n`;
-      });
-      await sendToOwner(msg);
+      try {
+        if (!Chat) return sendToOwner("❌ <b>БД недоступна</b> — модель Chat не загружена");
+        const chats = await Chat.findAll({ order: [["last_activity","DESC"]], limit: 30 });
+        if (chats.length === 0) return sendToOwner("📭 <b>Чатов нет</b> — бот ещё не встречал чатов");
+        const icons = { private:"👤", group:"👥", supergroup:"👥", channel:"📢" };
+        let msg = `📋 <b>ЧАТЫ</b> (${chats.length})\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+        chats.forEach(c => {
+          msg += `${icons[c.type]||"💬"} <b>${esc(c.title||"Личный чат")}</b>${c.username?" @"+esc(c.username):""}\n   🆔 <code>${c.id}</code>${c.members_count?" | 👥 "+c.members_count:""} | 💬 ${c.message_count}\n`;
+        });
+        await sendToOwner(msg);
+      } catch (e) { await sendError(cmd, e); }
       break;
     }
 
     case "/user": {
-      if (!User || !Message) return sendToOwner("❌ БД недоступна");
-      if (!args[0]) return sendToOwner("❌ Укажи ID: /user 123456789");
-      const u = await User.findByPk(args[0]);
-      if (!u) return sendToOwner(`❌ Пользователь <code>${esc(args[0])}</code> не найден`);
-      const recent = await Message.findAll({ where: { user_id: args[0] }, order: [["sent_at","DESC"]], limit: 5 });
-      const n = esc(`${u.first_name||""}${u.last_name?" "+u.last_name:""}`.trim()||"No Name");
-      let msg = `👤 <b>КАРТОЧКА</b>\n━━━━━━━━━━━━━━━━━━━━━━\n<b>${n}</b>\n🆔 <code>${u.id}</code>\n${u.username?"🔗 @"+esc(u.username):"нет username"}\n🌐 ${u.language_code||"?"} | 🤖 ${u.is_bot?"Да":"Нет"}${u.is_premium?" | ⭐ Premium":""}\n💬 Сообщений: ${u.message_count}\n📅 Первый визит: ${new Date(u.first_seen).toLocaleString("ru-RU")}\n🕐 Последняя активность: ${new Date(u.last_active).toLocaleString("ru-RU")}`;
-      if (recent.length) {
-        msg += `\n\n📝 <b>Последние сообщения:</b>\n`;
-        recent.forEach(m => msg += `• [${new Date(m.sent_at).toLocaleString("ru-RU")}] ${esc((m.content||"").substring(0,60))}${(m.content||"").length>60?"...":""}\n`);
-      }
-      await sendToOwner(msg);
+      try {
+        if (!User || !Message) return sendToOwner("❌ <b>БД недоступна</b> — модели не загружены");
+        if (!args[0]) return sendToOwner("❌ <b>Не указан ID</b>\nПример: /user 123456789");
+        if (isNaN(args[0])) return sendToOwner(`❌ <b>Некорректный ID:</b> <code>${esc(args[0])}</code>\nID должен быть числом`);
+        const u = await User.findByPk(args[0]);
+        if (!u) return sendToOwner(`❌ <b>Пользователь не найден</b>\nID: <code>${esc(args[0])}</code>\n\nВозможно, он ещё не писал боту`);
+        const recent = await Message.findAll({ where: { user_id: args[0] }, order: [["sent_at","DESC"]], limit: 5 });
+        const n = esc(`${u.first_name||""}${u.last_name?" "+u.last_name:""}`.trim()||"No Name");
+        let msg =
+          `👤 <b>КАРТОЧКА</b>\n━━━━━━━━━━━━━━━━━━━━━━\n` +
+          `<b>${n}</b>\n🆔 <code>${u.id}</code>\n` +
+          `${u.username?"🔗 @"+esc(u.username):"нет username"}\n` +
+          `🌐 ${u.language_code||"?"} | 🤖 ${u.is_bot?"Да":"Нет"}${u.is_premium?" | ⭐ Premium":""}\n` +
+          `💬 Сообщений: ${u.message_count}\n` +
+          `📅 Первый визит: ${new Date(u.first_seen).toLocaleString("ru-RU")}\n` +
+          `🕐 Последняя активность: ${new Date(u.last_active).toLocaleString("ru-RU")}`;
+        if (recent.length) {
+          msg += `\n\n📝 <b>Последние сообщения:</b>\n`;
+          recent.forEach(m => msg += `• [${new Date(m.sent_at).toLocaleString("ru-RU")}] ${esc((m.content||"").substring(0,60))}${(m.content||"").length>60?"...":""}\n`);
+        } else {
+          msg += `\n\n📭 <i>Сообщений в БД нет</i>`;
+        }
+        await sendToOwner(msg);
+      } catch (e) { await sendError(cmd, e); }
       break;
     }
 
     case "/search": {
-      if (!Message) return sendToOwner("❌ БД недоступна");
-      if (!args.length) return sendToOwner("❌ Укажи слово: /search привет");
-      const q = args.join(" ");
-      const found = await Message.findAll({
-        where: { content: { [Op.iLike]: `%${q}%` } },
-        order: [["sent_at","DESC"]], limit: 10,
-      });
-      let msg = `🔍 <b>ПОИСК: "${esc(q)}"</b> | Найдено: ${found.length}\n━━━━━━━━━━━━━━━━━━━━━━\n`;
-      found.forEach(m => msg += `🆔 <code>${m.user_id}</code> | ${new Date(m.sent_at).toLocaleString("ru-RU")}\n${esc((m.content||"").substring(0,80))}${(m.content||"").length>80?"...":""}\n\n`);
-      await sendToOwner(msg || "Ничего не найдено");
+      try {
+        if (!Message) return sendToOwner("❌ <b>БД недоступна</b> — модель Message не загружена");
+        if (!args.length) return sendToOwner("❌ <b>Не указан текст</b>\nПример: /search привет");
+        const q = args.join(" ");
+        if (q.length < 2) return sendToOwner("❌ Текст для поиска должен быть минимум 2 символа");
+        const found = await Message.findAll({
+          where: { content: { [Op.iLike]: `%${q}%` } },
+          order: [["sent_at","DESC"]], limit: 10,
+        });
+        if (found.length === 0) return sendToOwner(`🔍 <b>Поиск: "${esc(q)}"</b>\n\n📭 Ничего не найдено`);
+        let msg = `🔍 <b>ПОИСК: "${esc(q)}"</b> | Найдено: ${found.length}\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+        found.forEach(m => {
+          msg += `🆔 <code>${m.user_id||"?"}</code> | ${new Date(m.sent_at).toLocaleString("ru-RU")}\n`;
+          msg += `${esc((m.content||"").substring(0,80))}${(m.content||"").length>80?"...":""}\n\n`;
+        });
+        await sendToOwner(msg);
+      } catch (e) { await sendError(cmd, e); }
+      break;
+    }
+
+    case "/cleanup": {
+      try {
+        if (!Message) return sendToOwner("❌ <b>БД недоступна</b> — модель Message не загружена");
+        const days = parseInt(args[0]) || 30;
+        if (days < 1) return sendToOwner("❌ Количество дней должно быть больше 0\nПример: /cleanup 30");
+        const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        await sendToOwner(`🧹 Удаляю сообщения старше ${days} дней...`);
+        const deleted = await Message.destroy({ where: { sent_at: { [Op.lt]: cutoff } } });
+        await sendToOwner(
+          deleted > 0
+            ? `✅ <b>Очистка завершена</b>\n🗑 Удалено: ${deleted} сообщений\n📅 Старше: ${cutoff.toLocaleDateString("ru-RU")}`
+            : `📭 <b>Нечего удалять</b> — нет сообщений старше ${days} дней`
+        );
+      } catch (e) { await sendError(cmd, e); }
       break;
     }
 
     default:
-      await sendToOwner(`❓ Неизвестная команда. Напиши /help`);
+      await sendToOwner(`❓ Неизвестная команда: <code>${esc(cmd)}</code>\n\nНапиши /help`);
   }
 }
 
@@ -593,22 +669,6 @@ async function processUpdate(update) {
 function startScheduler() {
   // Статистика каждые 6 часов
   setInterval(() => handleOwnerCommand("/stats"), 6 * 60 * 60 * 1000);
-
-  // Очистка старых сообщений — каждый день в 3:00 ночи
-  setInterval(async () => {
-    const { Message } = getModels();
-    if (!Message) return;
-    const { Op } = require("sequelize");
-    
-    // Удаляем сообщения старше 30 дней
-    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const deleted = await Message.destroy({ where: { sent_at: { [Op.lt]: cutoff } } });
-    
-    if (deleted > 0) {
-      console.log(`🧹 [Monitor] Удалено старых сообщений: ${deleted}`);
-      await sendToOwner(`🧹 Очистка БД: удалено ${deleted} сообщений старше 30 дней`);
-    }
-  }, 24 * 60 * 60 * 1000);
 }
 
 // ================= MAIN EXPORT =================
