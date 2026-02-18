@@ -22,9 +22,9 @@ let User, Chat, Message;
 function getModels() {
   if (!User) {
     try {
-      User = require("../models/User");
-      Chat = require("../models/Chat");
-      Message = require("../models/Message");
+      User = require("../../models/user");
+      Chat = require("../../models/chat");
+      Message = require("../../models/message");
     } catch (e) {
       // Модели могут отсутствовать — работаем без БД
       console.warn("⚠️ [Monitor] Модели не найдены, работаем без сохранения в БД:", e.message);

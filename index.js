@@ -1,5 +1,9 @@
 require("dotenv").config();
 
+require("./models/user");
+require("./models/chat");
+require("./models/message");
+
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
@@ -11,6 +15,7 @@ const bot = require("./bot/bot");
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
+
 
 /* ============================================================
 CORS
