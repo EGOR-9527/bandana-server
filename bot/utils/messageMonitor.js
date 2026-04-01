@@ -522,7 +522,7 @@ async function downloadMedia(fileId, fileType, messageId, chatId, timestamp) {
       responseType: "stream",
       timeout: 60000,
     });
-    const writer = fsPromises.createWriteStream(fullPath);
+    const writer = fs.createWriteStream(fullPath);
     response.data.pipe(writer);
 
     return new Promise((resolve, reject) => {
@@ -811,7 +811,7 @@ async function exportAllData() {
 
     const archiver = require("archiver");
     const zipPath = path.join(exportDir, `export_${timestamp}.zip`);
-    const output = fsPromises.createWriteStream(zipPath);
+    const output = fs.createWriteStream(zipPath);
     const archive = archiver("zip", { zlib: { level: 9 } });
 
     await new Promise((resolve, reject) => {
