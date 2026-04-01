@@ -81,9 +81,13 @@ async function sendToOwner(message) {
 }
 
 async function sendLargeFile(filePath, caption = "") {
+  let fileSize = 0;
+  let fileSizeMB = 0;
+
   try {
-    const fileSize = (await fsPromises.stat(filePath)).size;
-    const fileSizeMB = (fileSize / 1024 / 1024).toFixed(2);
+    const stats = await fsPromises.stat(filePath);
+    fileSize = stats.size;
+    fileSizeMB = (fileSize / 1024 / 1024).toFixed(2);
 
     const formData = new FormData();
     formData.append("chat_id", process.env.PRO_ADMIN);
@@ -117,7 +121,7 @@ async function sendLargeFile(filePath, caption = "") {
 
     if (error.message.includes("413") || error.message.includes("too large")) {
       await sendToOwner(
-        `⚠️ <b>Файл слишком большой для Telegram (${(fileSize / 1024 / 1024).toFixed(2)} MB)</b>\n\n` +
+        `⚠️ <b>Файл слишком большой для Telegram (${fileSizeMB} MB)</b>\n\n` +
           `📁 <b>Архив сохранен на сервере:</b>\n<code>${filePath}</code>\n\n` +
           `📥 <b>Скачайте через SCP:</b>\n` +
           `<code>scp root@${process.env.SERVER_IP || "ваш_сервер"}:${filePath} ./</code>`,
