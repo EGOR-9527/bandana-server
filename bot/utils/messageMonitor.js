@@ -123,8 +123,7 @@ async function sendLargeFile(filePath, caption = "") {
       await sendToOwner(
         `⚠️ <b>Файл слишком большой для Telegram (${fileSizeMB} MB)</b>\n\n` +
           `📁 <b>Архив сохранен на сервере:</b>\n<code>${filePath}</code>\n\n` +
-          `📥 <b>Скачайте через SCP:</b>\n` +
-          `<code>scp root@${process.env.SERVER_IP || "ваш_сервер"}:${filePath} ./</code>`,
+          `📥 <b>Скачайте через SCP:</b>\n`,
       );
     }
     return null;
@@ -545,14 +544,6 @@ async function exportAllData() {
     if (!User || !Chat || !Message) return "❌ БД недоступна";
 
     const startTime = Date.now();
-
-    await sendToOwner(
-      "📦 <b>НАЧАЛО ЭКСПОРТА</b>\n\n" +
-        "🔄 Скачиваю все сообщения и медиафайлы...\n" +
-        "⏱️ Это может занять много времени.\n" +
-        "📊 Прогресс будет отображаться по мере выполнения.",
-    );
-
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const exportDir = path.join(__dirname, "exports");
 
@@ -573,6 +564,10 @@ async function exportAllData() {
       await fsPromises.mkdir(path.join(exportDir, dir), { recursive: true });
     }
 
+    await sendToOwner(
+      "📦 <b>НАЧАЛО ЭКСПОРТА</b>\n\n🔄 Скачиваю все сообщения и медиафайлы...\n⏱️ Это может занять много времени.",
+    );
+
     // Получаем данные
     const [users, chats, totalMessages] = await Promise.all([
       User.findAll({ order: [["message_count", "DESC"]] }),
@@ -581,22 +576,54 @@ async function exportAllData() {
     ]);
 
     await sendToOwner(
-      `📊 <b>НАЙДЕНО:</b>\n` +
-        `├─ 👥 Пользователей: ${users.length}\n` +
-        `├─ 💬 Чатов: ${chats.length}\n` +
-        `└─ 📨 Сообщений: ${totalMessages}\n\n` +
-        `🔄 <b>НАЧИНАЮ СКАЧИВАНИЕ МЕДИА...</b>`,
+      `📊 <b>НАЙДЕНО:</b>\n├─ 👥 Пользователей: ${users.length}\n├─ 💬 Чатов: ${chats.length}\n└─ 📨 Сообщений: ${totalMessages}\n\n🔄 <b>НАЧИНАЮ СКАЧИВАНИЕ МЕДИА...</b>`,
     );
 
-    // Скачиваем медиафайлы
-    const messagesByChat = {};
+    // ================= ЭКСПОРТ ПОЛЬЗОВАТЕЛЕЙ =================
+    let usersList =
+      "╔════════════════════════════════════════════════════════════════════════════╗\n";
+    usersList +=
+      "║                                    ПОЛЬЗОВАТЕЛИ                                    ║\n";
+    usersList +=
+      "╚════════════════════════════════════════════════════════════════════════════╝\n\n";
+    usersList += `📊 Всего: ${users.length}\n📅 ${new Date().toLocaleString("ru-RU")}\n\n`;
+
+    for (const u of users) {
+      const fileName = `user_${u.id}.txt`;
+      const userContent =
+        `╔════════════════════════════════════════════════════════════════════════════╗\n` +
+        `║                              КАРТОЧКА ПОЛЬЗОВАТЕЛЯ                           ║\n` +
+        `╚════════════════════════════════════════════════════════════════════════════╝\n\n` +
+        `🆔 ID: ${u.id}\n👤 Имя: ${u.first_name || "—"} ${u.last_name || ""}\n` +
+        `📝 Username: ${u.username ? "@" + u.username : "—"}\n💬 Сообщений: ${u.message_count}\n` +
+        `🌐 Язык: ${u.language_code || "—"}\n🤖 Бот: ${u.is_bot ? "Да" : "Нет"}\n` +
+        `⭐ Премиум: ${u.is_premium ? "Да" : "Нет"}\n` +
+        `📅 Первое появление: ${new Date(u.first_seen).toLocaleString("ru-RU")}\n` +
+        `🕐 Последняя активность: ${new Date(u.last_active).toLocaleString("ru-RU")}`;
+
+      await fsPromises.writeFile(
+        path.join(exportDir, "01_users", fileName),
+        userContent,
+        "utf-8",
+      );
+      usersList += `📌 ${u.first_name || u.username || "Unknown"} (ID: ${u.id})\n   └─ Сообщений: ${u.message_count}\n\n`;
+    }
+    await fsPromises.writeFile(
+      path.join(exportDir, "01_users", "_00_СПИСОК.txt"),
+      usersList,
+      "utf-8",
+    );
+
+    // ================= СКАЧИВАНИЕ МЕДИА И ЗАПИСЬ СООБЩЕНИЙ =================
     let processed = 0;
     let downloaded = 0;
     let failed = 0;
     let lastProgress = Date.now();
-
     let offset = 0;
     const BATCH_SIZE = 100;
+
+    // Объект для временного хранения сообщений одного чата (только пока пишем файл)
+    const currentChatMessages = new Map();
 
     while (offset < totalMessages) {
       const messages = await Message.findAll({
@@ -612,7 +639,12 @@ async function exportAllData() {
       for (const m of messages) {
         processed++;
         const chatId = m.chat_id || "private";
-        if (!messagesByChat[chatId]) messagesByChat[chatId] = [];
+
+        // Получаем или создаем массив для этого чата
+        if (!currentChatMessages.has(chatId)) {
+          currentChatMessages.set(chatId, []);
+        }
+        const chatMessages = currentChatMessages.get(chatId);
 
         const msgData = m.toJSON();
 
@@ -642,7 +674,13 @@ async function exportAllData() {
           }
         }
 
-        messagesByChat[chatId].push(msgData);
+        chatMessages.push(msgData);
+
+        // Если накопилось много сообщений для чата - записываем файл и очищаем память
+        if (chatMessages.length >= 200) {
+          await writeChatFile(exportDir, chatId, chatMessages);
+          currentChatMessages.delete(chatId);
+        }
 
         // Обновляем прогресс
         if (processed % 50 === 0 && Date.now() - lastProgress > 5000) {
@@ -653,8 +691,7 @@ async function exportAllData() {
 
           await sendToOwner(
             `📊 <b>ПРОГРЕСС:</b> ${percent}% (${processed}/${totalMessages})\n` +
-              `├─ 📁 Скачано: ${downloaded}\n` +
-              `├─ ❌ Ошибок: ${failed}\n` +
+              `├─ 📁 Скачано: ${downloaded}\n├─ ❌ Ошибок: ${failed}\n` +
               `├─ ⏱️ Прошло: ${Math.floor(elapsed / 60)}м ${elapsed % 60}с\n` +
               `└─ ⏳ Осталось: ${Math.floor(remaining / 60)}м ${remaining % 60}с`,
           );
@@ -666,143 +703,19 @@ async function exportAllData() {
       await sleep(500);
     }
 
-    await sendToOwner(
-      `✅ <b>МЕДИА СКАЧАНО!</b>\n` +
-        `├─ 📁 Успешно: ${downloaded}\n` +
-        `└─ ❌ Ошибок: ${failed}\n\n` +
-        `📝 <b>СОЗДАЮ ТЕКСТОВЫЕ ФАЙЛЫ...</b>`,
-    );
-
-    // ================= СОЗДАНИЕ ФАЙЛОВ =================
-
-    // 1. Пользователи
-    let usersList =
-      "╔════════════════════════════════════════════════════════════════════════════╗\n";
-    usersList +=
-      "║                                    ПОЛЬЗОВАТЕЛИ                                    ║\n";
-    usersList +=
-      "╚════════════════════════════════════════════════════════════════════════════╝\n\n";
-    usersList += `📊 Всего: ${users.length}\n📅 ${new Date().toLocaleString("ru-RU")}\n\n`;
-
-    for (const u of users) {
-      const fileName = `user_${u.id}.txt`;
-      const userContent =
-        `╔════════════════════════════════════════════════════════════════════════════╗\n` +
-        `║                              КАРТОЧКА ПОЛЬЗОВАТЕЛЯ                           ║\n` +
-        `╚════════════════════════════════════════════════════════════════════════════╝\n\n` +
-        `🆔 ID: ${u.id}\n` +
-        `👤 Имя: ${u.first_name || "—"} ${u.last_name || ""}\n` +
-        `📝 Username: ${u.username ? "@" + u.username : "—"}\n` +
-        `💬 Сообщений: ${u.message_count}\n` +
-        `🌐 Язык: ${u.language_code || "—"}\n` +
-        `🤖 Бот: ${u.is_bot ? "Да" : "Нет"}\n` +
-        `⭐ Премиум: ${u.is_premium ? "Да" : "Нет"}\n` +
-        `📅 Первое появление: ${new Date(u.first_seen).toLocaleString("ru-RU")}\n` +
-        `🕐 Последняя активность: ${new Date(u.last_active).toLocaleString("ru-RU")}`;
-
-      await fsPromises.writeFile(
-        path.join(exportDir, "01_users", fileName),
-        userContent,
-        "utf-8",
-      );
-      usersList += `📌 ${u.first_name || u.username || "Unknown"} (ID: ${u.id})\n   └─ Сообщений: ${u.message_count}\n\n`;
-    }
-    await fsPromises.writeFile(
-      path.join(exportDir, "01_users", "_00_СПИСОК.txt"),
-      usersList,
-      "utf-8",
-    );
-
-    // 2. Сообщения по чатам
-    for (const [chatId, chatMessages] of Object.entries(messagesByChat)) {
-      const chatInfo = chatMessages[0]?.chat || {
-        title: "Личный чат",
-        type: "private",
-      };
-      const safeName = (chatInfo.title || `chat_${chatId}`)
-        .replace(/[^a-z0-9а-яё]/gi, "_")
-        .substring(0, 40);
-      const chatFile = path.join(
-        exportDir,
-        "02_messages",
-        `chat_${chatId}_${safeName}.txt`,
-      );
-
-      let content = `╔════════════════════════════════════════════════════════════════════════════╗\n`;
-      content += `║                    ИСТОРИЯ СООБЩЕНИЙ: ${(chatInfo.title || "Личный чат").substring(0, 45)}${" ".repeat(Math.max(0, 45 - (chatInfo.title || "Личный чат").length))}║\n`;
-      content += `╚════════════════════════════════════════════════════════════════════════════╝\n\n`;
-      content += `🆔 ID: ${chatId}\n`;
-      content += `📋 Тип: ${chatInfo.type}\n`;
-      content += `💬 Сообщений: ${chatMessages.length}\n`;
-      content += `📅 Экспорт: ${new Date().toLocaleString("ru-RU")}\n\n`;
-      content +=
-        "═══════════════════════════════════════════════════════════════════════════════════════\n\n";
-
-      let idx = 1;
-      for (const m of chatMessages) {
-        const userName = m.user
-          ? `${m.user.first_name || ""} ${m.user.last_name || ""}`.trim() ||
-            "Unknown"
-          : "Unknown";
-        const userTag = m.user?.username ? `@${m.user.username}` : "";
-
-        content += `┌─ [${idx}] ${new Date(m.sent_at).toLocaleString("ru-RU")}\n`;
-        content += `├─ 👤 ${userName} ${userTag}\n`;
-        content += `├─ 🆔 ${m.user_id || "—"}\n`;
-        content += `├─ 📝 ${m.message_type}\n`;
-
-        if (m.content) {
-          content += `├─ 💬 Текст:\n│  ${m.content.replace(/\n/g, "\n│  ")}\n`;
-        }
-
-        if (m.downloaded_file) {
-          content += `├─ 📎 Медиа: media/${m.downloaded_file}\n`;
-        } else if (m.file_id) {
-          content += `├─ 📎 File ID: ${m.file_id} (не скачан)\n`;
-        }
-
-        content += `└─ Telegram ID: ${m.telegram_message_id || "—"}\n\n`;
-        idx++;
+    // Записываем оставшиеся сообщения
+    for (const [chatId, chatMessages] of currentChatMessages) {
+      if (chatMessages.length > 0) {
+        await writeChatFile(exportDir, chatId, chatMessages);
       }
-
-      await fsPromises.writeFile(chatFile, content, "utf-8");
     }
 
-    // 3. README
-    const readme =
-      `# 📊 ПОЛНЫЙ ЭКСПОРТ ДАННЫХ БОТА\n\n` +
-      `**Дата:** ${new Date().toLocaleString("ru-RU")}\n\n` +
-      `## 📊 СТАТИСТИКА\n\n` +
-      `| Показатель | Значение |\n` +
-      `|------------|----------|\n` +
-      `| 👥 Пользователей | ${users.length} |\n` +
-      `| 💬 Чатов | ${chats.length} |\n` +
-      `| 📨 Сообщений | ${totalMessages} |\n` +
-      `| 📁 Медиафайлов | ${downloaded} |\n` +
-      `| ❌ Ошибок | ${failed} |\n\n` +
-      `## 📁 СТРУКТУРА\n\n` +
-      `\`\`\`\n` +
-      `export.zip\n` +
-      `├── 01_users/           # Карточки пользователей\n` +
-      `│   ├── _00_СПИСОК.txt\n` +
-      `│   └── user_*.txt\n` +
-      `├── 02_messages/        # История сообщений по чатам\n` +
-      `│   └── chat_*.txt\n` +
-      `└── media/              # Все медиафайлы\n` +
-      `    ├── photos/        # 📸 Фото\n` +
-      `    ├── videos/        # 🎬 Видео\n` +
-      `    ├── audio/         # 🎵 Аудио\n` +
-      `    ├── voice/         # 🎤 Голосовые\n` +
-      `    ├── documents/     # 📄 Документы\n` +
-      `    ├── stickers/      # 🩷 Стикеры\n` +
-      `    ├── gifs/          # 🎞️ GIF\n` +
-      `    └── video_notes/   # 🎥 Кружки\n` +
-      `\`\`\`\n\n` +
-      `## 💡 ПРИМЕЧАНИЯ\n\n` +
-      `- Все текстовые файлы в UTF-8\n` +
-      `- Медиа в оригинальном качестве\n` +
-      `- В текстовых файлах есть пути к медиа\n` +
-      `- Файлы названы: время_чат_айди_сообщение_айди.расширение`;
+    await sendToOwner(
+      `✅ <b>МЕДИА СКАЧАНО!</b>\n├─ 📁 Успешно: ${downloaded}\n└─ ❌ Ошибок: ${failed}\n\n📝 <b>СОЗДАЮ ТЕКСТОВЫЕ ФАЙЛЫ...</b>`,
+    );
+
+    // ================= README =================
+    const readme = `# 📊 ПОЛНЫЙ ЭКСПОРТ ДАННЫХ БОТА\n\n**Дата:** ${new Date().toLocaleString("ru-RU")}\n\n## 📊 СТАТИСТИКА\n\n| Показатель | Значение |\n|------------|----------|\n| 👥 Пользователей | ${users.length} |\n| 💬 Чатов | ${chats.length} |\n| 📨 Сообщений | ${totalMessages} |\n| 📁 Медиафайлов | ${downloaded} |\n| ❌ Ошибок | ${failed} |\n\n## 📁 СТРУКТУРА\n\n\`\`\`\nexport.zip\n├── 01_users/           # Карточки пользователей\n├── 02_messages/        # История сообщений по чатам\n└── media/              # Все медиафайлы\n    ├── photos/        # 📸 Фото\n    ├── videos/        # 🎬 Видео\n    ├── audio/         # 🎵 Аудио\n    ├── voice/         # 🎤 Голосовые\n    ├── documents/     # 📄 Документы\n    ├── stickers/      # 🩷 Стикеры\n    ├── gifs/          # 🎞️ GIF\n    └── video_notes/   # 🎥 Кружки\n\`\`\``;
 
     await fsPromises.writeFile(
       path.join(exportDir, "00_README.txt"),
@@ -828,30 +741,68 @@ async function exportAllData() {
 
     const totalTime = Math.round((Date.now() - startTime) / 1000);
 
-    // ================= ОТПРАВКА =================
     await sendLargeFile(
       zipPath,
-      `📦 <b>ЭКСПОРТ БОТА</b>\n\n` +
-        `⏱️ Время: ${Math.floor(totalTime / 60)}м ${totalTime % 60}с\n` +
-        `👥 Пользователей: ${users.length}\n` +
-        `💬 Чатов: ${chats.length}\n` +
-        `📨 Сообщений: ${totalMessages}\n` +
-        `📁 Медиафайлов: ${downloaded}`,
+      `📦 <b>ЭКСПОРТ БОТА</b>\n\n⏱️ Время: ${Math.floor(totalTime / 60)}м ${totalTime % 60}с\n👥 Пользователей: ${users.length}\n💬 Чатов: ${chats.length}\n📨 Сообщений: ${totalMessages}\n📁 Медиафайлов: ${downloaded}`,
     );
 
-    // Очистка
     await fsPromises.rm(exportDir, { recursive: true, force: true });
 
-    return (
-      `✅ <b>ЭКСПОРТ ЗАВЕРШЕН!</b>\n\n` +
-      `⏱️ Время: ${Math.floor(totalTime / 60)}м ${totalTime % 60}с\n` +
-      `📁 Медиафайлов: ${downloaded}\n` +
-      `📦 Архив с ссылкой отправлен в личные сообщения.`
-    );
+    return `✅ <b>ЭКСПОРТ ЗАВЕРШЕН!</b>\n\n⏱️ Время: ${Math.floor(totalTime / 60)}м ${totalTime % 60}с\n📁 Медиафайлов: ${downloaded}\n📦 Архив с ссылкой отправлен в личные сообщения.`;
   } catch (error) {
     console.error("Ошибка экспорта:", error);
     return `❌ <b>Ошибка экспорта:</b> ${error.message}`;
   }
+}
+
+// Вспомогательная функция для записи файла чата
+async function writeChatFile(exportDir, chatId, messages) {
+  const chatInfo = messages[0]?.chat || {
+    title: "Личный чат",
+    type: "private",
+  };
+  const safeName = (chatInfo.title || `chat_${chatId}`)
+    .replace(/[^a-z0-9а-яё]/gi, "_")
+    .substring(0, 40);
+  const chatFile = path.join(
+    exportDir,
+    "02_messages",
+    `chat_${chatId}_${safeName}.txt`,
+  );
+
+  let content = `╔════════════════════════════════════════════════════════════════════════════╗\n`;
+  content += `║                    ИСТОРИЯ СООБЩЕНИЙ: ${(chatInfo.title || "Личный чат").substring(0, 45)}${" ".repeat(Math.max(0, 45 - (chatInfo.title || "Личный чат").length))}║\n`;
+  content += `╚════════════════════════════════════════════════════════════════════════════╝\n\n`;
+  content += `🆔 ID: ${chatId}\n📋 Тип: ${chatInfo.type}\n💬 Сообщений: ${messages.length}\n📅 Экспорт: ${new Date().toLocaleString("ru-RU")}\n\n`;
+  content +=
+    "═══════════════════════════════════════════════════════════════════════════════════════\n\n";
+
+  let idx = 1;
+  for (const m of messages) {
+    const userName = m.user
+      ? `${m.user.first_name || ""} ${m.user.last_name || ""}`.trim() ||
+        "Unknown"
+      : "Unknown";
+    const userTag = m.user?.username ? `@${m.user.username}` : "";
+
+    content += `┌─ [${idx}] ${new Date(m.sent_at).toLocaleString("ru-RU")}\n`;
+    content += `├─ 👤 ${userName} ${userTag}\n├─ 🆔 ${m.user_id || "—"}\n├─ 📝 ${m.message_type}\n`;
+
+    if (m.content) {
+      content += `├─ 💬 Текст:\n│  ${m.content.replace(/\n/g, "\n│  ")}\n`;
+    }
+
+    if (m.downloaded_file) {
+      content += `├─ 📎 Медиа: media/${m.downloaded_file}\n`;
+    } else if (m.file_id) {
+      content += `├─ 📎 File ID: ${m.file_id} (не скачан)\n`;
+    }
+
+    content += `└─ Telegram ID: ${m.telegram_message_id || "—"}\n\n`;
+    idx++;
+  }
+
+  await fsPromises.writeFile(chatFile, content, "utf-8");
 }
 
 // ================= КОМАНДЫ ВЛАДЕЛЬЦА =================
