@@ -12,10 +12,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-<<<<<<< HEAD
     "archiver": "^7.0.1",
-=======
->>>>>>> e3d01c08377de1ba5464a0b35213a71ae4e836f3
     "axios": "^1.13.5",
     "cors": "^2.8.5",
     "dotenv": "^17.2.4",
