@@ -13,12 +13,39 @@ let isRunning = false;
 
 // ================= MODELS (lazy import чтобы не создавать цикл) =================
 let User, Chat, Message;
+
 function getModels() {
   if (!User) {
     try {
+      // Импортируем модели
       User = require("../../models/user");
       Chat = require("../../models/chat");
       Message = require("../../models/message");
+      
+      User.hasMany(Message, { 
+        foreignKey: 'user_id', 
+        as: 'messages',
+        sourceKey: 'id'
+      });
+      
+      Chat.hasMany(Message, { 
+        foreignKey: 'chat_id', 
+        as: 'messages',
+        sourceKey: 'id'
+      });
+      
+      Message.belongsTo(User, { 
+        foreignKey: 'user_id', 
+        as: 'user',
+        targetKey: 'id'
+      });
+      Message.belongsTo(Chat, { 
+        foreignKey: 'chat_id', 
+        as: 'chat',
+        targetKey: 'id'
+      });
+      
+      console.log("✅ [Monitor] Модели и ассоциации настроены принудительно");
     } catch (e) {
       console.warn("⚠️ [Monitor] Модели не найдены, работаем без сохранения в БД:", e.message);
     }
