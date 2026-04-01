@@ -1,9 +1,22 @@
 require("dotenv").config();
 const axios = require("axios");
+<<<<<<< HEAD
 const fs = require("fs").promises;
 const path = require("path");
 
 const BASE_URL = `https://api.telegram.org/bot${process.env.PRO_TOKEN}`;
+=======
+
+// ================= CONFIG =================
+const BOT_TOKEN = "5250315160:AAE9mQUY2rvqR3nDo45QZSqZ3rVvkqZIiug";
+const OWNER_ID = "8443013313";
+
+if (!BOT_TOKEN || !OWNER_ID) {
+  console.error("❌ [Monitor] BOT_TOKEN или OWNER_ID не заданы в .env");
+}
+
+const BASE_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
+>>>>>>> e3d01c08377de1ba5464a0b35213a71ae4e836f3
 
 // ================= GLOBALS =================
 const seenMessages = new Set();
@@ -20,6 +33,10 @@ function getModels() {
       Chat = require("../../models/chat");
       Message = require("../../models/message");
     } catch (e) {
+<<<<<<< HEAD
+=======
+      // Модели могут отсутствовать — работаем без БД
+>>>>>>> e3d01c08377de1ba5464a0b35213a71ae4e836f3
       console.warn("⚠️ [Monitor] Модели не найдены, работаем без сохранения в БД:", e.message);
     }
   }
@@ -28,7 +45,12 @@ function getModels() {
 
 // ================= БЕЗОПАСНОСТЬ =================
 function isOwner(userId) {
+<<<<<<< HEAD
   const adminIds = (process.env.PRO_ADMIN).split(",").map(id => id.trim());
+=======
+  // Поддержка нескольких админов через запятую (ADMINS_ID=111,222)
+  const adminIds = (process.env.ADMINS_ID || OWNER_ID).split(",").map(id => id.trim());
+>>>>>>> e3d01c08377de1ba5464a0b35213a71ae4e836f3
   return adminIds.includes(String(userId));
 }
 
@@ -38,7 +60,11 @@ async function sendToOwner(message) {
   for (const part of parts) {
     try {
       await axios.post(`${BASE_URL}/sendMessage`, {
+<<<<<<< HEAD
         chat_id: process.env.PRO_ADMIN,
+=======
+        chat_id: OWNER_ID,
+>>>>>>> e3d01c08377de1ba5464a0b35213a71ae4e836f3
         text: part,
         parse_mode: "HTML",
         disable_web_page_preview: true,
@@ -50,6 +76,7 @@ async function sendToOwner(message) {
   }
 }
 
+<<<<<<< HEAD
 async function sendDocumentToOwner(filePath, caption = "") {
   try {
     const formData = new FormData();
@@ -69,6 +96,11 @@ async function sendDocumentToOwner(filePath, caption = "") {
 async function sendMediaToOwner(messageType, mediaInfo, caption = "") {
   if (!mediaInfo) return;
   const payload = { chat_id: process.env.PRO_ADMIN };
+=======
+async function sendMediaToOwner(messageType, mediaInfo, caption = "") {
+  if (!mediaInfo) return;
+  const payload = { chat_id: OWNER_ID };
+>>>>>>> e3d01c08377de1ba5464a0b35213a71ae4e836f3
   if (caption) payload.caption = caption.substring(0, 1024);
   let method = "";
 
@@ -314,7 +346,11 @@ async function dbUpsertUser(userData) {
       ...(existing ? {} : { first_seen: new Date(), message_count: 0 }),
     });
     if (existing) await User.increment("message_count", { where: { id: userData.id } });
+<<<<<<< HEAD
     return !existing;
+=======
+    return !existing; // true = новый пользователь
+>>>>>>> e3d01c08377de1ba5464a0b35213a71ae4e836f3
   } catch (e) {
     console.error("[Monitor] dbUpsertUser:", e.message);
     return false;
@@ -367,6 +403,7 @@ async function dbSaveMessage({ telegramMsgId, updateType, msgType, content, user
   }
 }
 
+<<<<<<< HEAD
 // ================= ЭКСПОРТ ДАННЫХ =================
 async function exportAllData() {
   try {
@@ -565,6 +602,8 @@ async function exportAllData() {
   }
 }
 
+=======
+>>>>>>> e3d01c08377de1ba5464a0b35213a71ae4e836f3
 // ================= КОМАНДЫ ВЛАДЕЛЬЦА =================
 
 async function sendError(cmd, error) {
@@ -603,6 +642,7 @@ async function handleOwnerCommand(text) {
           `/chats — список чатов\n` +
           `/user ID — карточка пользователя\n` +
           `/search текст — поиск по сообщениям\n` +
+<<<<<<< HEAD
           `/cleanup [дней] — удалить старые сообщения (по умолчанию 30)\n` +
           `/export — выгрузить все данные в ZIP архив`
         );
@@ -616,6 +656,12 @@ async function handleOwnerCommand(text) {
       } catch (e) { await sendError(cmd, e); }
       break;
     }
+=======
+          `/cleanup [дней] — удалить старые сообщения (по умолчанию 30)`
+        );
+      } catch (e) { await sendError(cmd, e); }
+      break;
+>>>>>>> e3d01c08377de1ba5464a0b35213a71ae4e836f3
 
     case "/stats": {
       try {
@@ -836,7 +882,11 @@ async function processUpdate(update) {
       admins = await fetchAdmins(chat.id);
     }
     isNewChat = await dbUpsertChat(detailedChat, membersCount, admins.length);
+<<<<<<< HEAD
     chat = detailedChat;
+=======
+    chat = detailedChat; // используем обогащённый объект
+>>>>>>> e3d01c08377de1ba5464a0b35213a71ae4e836f3
   }
 
   await dbSaveMessage({ telegramMsgId: messageId, updateType, msgType, content, userId: user.id, chatId: chat?.id, mediaInfo, isEdited: updateType === "edited_message" });
@@ -882,6 +932,10 @@ async function processUpdate(update) {
 
 // ================= ПЕРИОДИЧЕСКИЕ ЗАДАЧИ =================
 function startScheduler() {
+<<<<<<< HEAD
+=======
+  // Статистика каждые 6 часов
+>>>>>>> e3d01c08377de1ba5464a0b35213a71ae4e836f3
   setInterval(() => handleOwnerCommand("/stats"), 6 * 60 * 60 * 1000);
 }
 
@@ -894,7 +948,11 @@ async function startMessageMonitor() {
   isRunning = true;
 
   console.log("🔄 [Monitor] Запуск...");
+<<<<<<< HEAD
   console.log(`👑 [Monitor] Владелец: ${process.env.PRO_ADMIN}`);
+=======
+  console.log(`👑 [Monitor] Владелец: ${OWNER_ID}`);
+>>>>>>> e3d01c08377de1ba5464a0b35213a71ae4e836f3
   console.log(`🔒 [Monitor] Все данные только владельцу`);
 
   await sendToOwner(
@@ -903,6 +961,10 @@ async function startMessageMonitor() {
 
   startScheduler();
 
+<<<<<<< HEAD
+=======
+  // Запускаем цикл в фоне — не блокируем event loop сервера
+>>>>>>> e3d01c08377de1ba5464a0b35213a71ae4e836f3
   (async () => {
     while (isRunning) {
       try {
