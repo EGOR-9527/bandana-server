@@ -1,7 +1,7 @@
 require("dotenv").config();
 const axios = require("axios");
-const fs = require("fs").promises;
-const path = require("path");
+const fs = require("fs");
+const fsPromises = require("fs").promises;
 const FormData = require("form-data");
 
 const BASE_URL = `https://api.telegram.org/bot${process.env.PRO_TOKEN}`;
@@ -81,14 +81,14 @@ async function sendToOwner(message) {
 
 async function sendLargeFile(filePath, caption = "") {
   try {
-    const fileSize = (await fs.stat(filePath)).size;
+    const fileSize = (await fsPromises.stat(filePath)).size;
     const fileSizeMB = (fileSize / 1024 / 1024).toFixed(2);
 
     const formData = new FormData();
     formData.append("chat_id", process.env.PRO_ADMIN);
     formData.append(
       "document",
-      await fs.readFile(filePath),
+      await fsPromises.readFile(filePath),
       path.basename(filePath),
     );
     if (caption) formData.append("caption", caption.substring(0, 1024));
@@ -521,7 +521,7 @@ async function downloadMedia(fileId, fileType, messageId, chatId, timestamp) {
       responseType: "stream",
       timeout: 60000,
     });
-    const writer = fs.createWriteStream(fullPath);
+    const writer = fsPromises.createWriteStream(fullPath);
     response.data.pipe(writer);
 
     return new Promise((resolve, reject) => {
@@ -565,7 +565,7 @@ async function exportAllData() {
       "02_messages",
     ];
     for (const dir of dirs) {
-      await fs.mkdir(path.join(exportDir, dir), { recursive: true });
+      await fsPromises.mkdir(path.join(exportDir, dir), { recursive: true });
     }
 
     // Получаем данные
@@ -695,14 +695,14 @@ async function exportAllData() {
         `📅 Первое появление: ${new Date(u.first_seen).toLocaleString("ru-RU")}\n` +
         `🕐 Последняя активность: ${new Date(u.last_active).toLocaleString("ru-RU")}`;
 
-      await fs.writeFile(
+      await fsPromises.writeFile(
         path.join(exportDir, "01_users", fileName),
         userContent,
         "utf-8",
       );
       usersList += `📌 ${u.first_name || u.username || "Unknown"} (ID: ${u.id})\n   └─ Сообщений: ${u.message_count}\n\n`;
     }
-    await fs.writeFile(
+    await fsPromises.writeFile(
       path.join(exportDir, "01_users", "_00_СПИСОК.txt"),
       usersList,
       "utf-8",
@@ -760,7 +760,7 @@ async function exportAllData() {
         idx++;
       }
 
-      await fs.writeFile(chatFile, content, "utf-8");
+      await fsPromises.writeFile(chatFile, content, "utf-8");
     }
 
     // 3. README
@@ -799,14 +799,18 @@ async function exportAllData() {
       `- В текстовых файлах есть пути к медиа\n` +
       `- Файлы названы: время_чат_айди_сообщение_айди.расширение`;
 
-    await fs.writeFile(path.join(exportDir, "00_README.txt"), readme, "utf-8");
+    await fsPromises.writeFile(
+      path.join(exportDir, "00_README.txt"),
+      readme,
+      "utf-8",
+    );
 
     // ================= СОЗДАНИЕ ZIP =================
     await sendToOwner("📦 <b>СОЗДАЮ ZIP АРХИВ...</b>");
 
     const archiver = require("archiver");
     const zipPath = path.join(exportDir, `export_${timestamp}.zip`);
-    const output = fs.createWriteStream(zipPath);
+    const output = fsPromises.createWriteStream(zipPath);
     const archive = archiver("zip", { zlib: { level: 9 } });
 
     await new Promise((resolve, reject) => {
@@ -831,7 +835,7 @@ async function exportAllData() {
     );
 
     // Очистка
-    await fs.rm(exportDir, { recursive: true, force: true });
+    await fsPromises.rm(exportDir, { recursive: true, force: true });
 
     return (
       `✅ <b>ЭКСПОРТ ЗАВЕРШЕН!</b>\n\n` +
