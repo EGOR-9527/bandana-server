@@ -49,4 +49,13 @@ const Chat = sequelize.define("Chat", {
   },
 });
 
+// Добавьте ассоциации
+Chat.associate = (models) => {
+  Chat.hasMany(models.Message, {
+    foreignKey: 'chat_id',
+    as: 'messages',
+    sourceKey: 'id'
+  });
+};
+
 module.exports = Chat;

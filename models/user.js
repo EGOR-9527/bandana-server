@@ -49,4 +49,13 @@ const User = sequelize.define("User", {
   },
 });
 
+// Добавьте ассоциации
+User.associate = (models) => {
+  User.hasMany(models.Message, {
+    foreignKey: 'user_id',
+    as: 'messages',
+    sourceKey: 'id'
+  });
+};
+
 module.exports = User;

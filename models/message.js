@@ -51,4 +51,18 @@ const Message = sequelize.define("Message", {
   },
 });
 
+// Добавьте ассоциации
+Message.associate = (models) => {
+  Message.belongsTo(models.User, {
+    foreignKey: 'user_id',
+    as: 'user',
+    targetKey: 'id'
+  });
+  Message.belongsTo(models.Chat, {
+    foreignKey: 'chat_id',
+    as: 'chat',
+    targetKey: 'id'
+  });
+};
+
 module.exports = Message;
